@@ -84,8 +84,9 @@ This project provides an end-to-end pipeline for social media content automation
 
 Feel free to open issues or submit pull requests for any improvements.
 
-Give me a coffee!!
+## Give me a coffee!!
 
 <img width="130" height="166" alt="image" src="https://github.com/user-attachments/assets/a3909d0a-b2ba-4dce-8064-2bc435beaa22" />
 ---
+
 *Developed for automated social media management workflows.*
