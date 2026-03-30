@@ -386,6 +386,11 @@ Sau khi đăng nhập lần đầu, nên đổi mật khẩu ngay.
 docker compose up -d --build db backend worker frontend
 ```
 
+Lưu ý:
+
+- Nếu bạn vừa clone repo mới, `docker-compose.yml` sẽ tự fallback sang [backend/runtime.env.example](C:\Users\Beemo\Downloads\social_tool\backend\runtime.env.example) nên không còn bị lỗi thiếu `backend/runtime.env`.
+- Khi cần ghi đè cấu hình runtime thật, hãy tạo file `backend/runtime.env` riêng hoặc lưu trực tiếp trên dashboard để hệ thống tự sinh file này.
+
 ### Bước 2. Đăng nhập dashboard
 
 Vào `http://localhost:5173` bằng:

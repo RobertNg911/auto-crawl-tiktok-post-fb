@@ -34,7 +34,10 @@ services:
     restart: unless-stopped
     stop_grace_period: 45s
     env_file:
-      - ./backend/runtime.env
+      - path: ./backend/runtime.env.example
+        required: true
+      - path: ./backend/runtime.env
+        required: false
     dns:
       - 8.8.8.8
       - 1.1.1.1
@@ -94,7 +97,10 @@ services:
     restart: unless-stopped
     stop_grace_period: 60s
     env_file:
-      - ./backend/runtime.env
+      - path: ./backend/runtime.env.example
+        required: true
+      - path: ./backend/runtime.env
+        required: false
     dns:
       - 8.8.8.8
       - 1.1.1.1
@@ -172,7 +178,10 @@ services:
     logging: *default-logging
     network_mode: "service:backend"
     env_file:
-      - ./backend/runtime.env
+      - path: ./backend/runtime.env.example
+        required: true
+      - path: ./backend/runtime.env
+        required: false
     command: tunnel --no-autoupdate run
     depends_on:
       backend:
