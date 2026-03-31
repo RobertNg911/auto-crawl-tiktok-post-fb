@@ -1,17 +1,23 @@
 import { useState, useMemo } from 'react';
-import { Plus, Share2, RefreshCw, AlertCircle } from 'lucide-react';
+import { Plus, Share2, RefreshCw, AlertCircle, Calendar, Clock } from 'lucide-react';
 import { CampaignCard } from './CampaignCard';
 import { CampaignWizard } from './CampaignWizard';
+import { ScheduleTimeline, ManualScheduleModal } from './ScheduleTimeline';
 import { MOCK_CAMPAIGNS } from '../../data/mockCampaigns';
+import { MOCK_VIDEOS } from '../../data/mockVideos';
 import { CAMPAIGN_STATUS_OPTIONS } from '../../data/mockCampaigns';
 
 export function CampaignsPage() {
   const [campaigns, setCampaigns] = useState(MOCK_CAMPAIGNS);
+  const [videos, setVideos] = useState(MOCK_VIDEOS);
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showWizard, setShowWizard] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
+  const [selectedCampaign, setSelectedCampaign] = useState(null);
+  const [scheduleModalVideo, setScheduleModalVideo] = useState(null);
 
   const filteredCampaigns = useMemo(() => {
     return campaigns.filter((campaign) => {
@@ -73,6 +79,28 @@ export function CampaignsPage() {
     alert('Đồng bộ thành công! Video mới sẽ được thêm vào queue.');
   };
 
+  const handleViewTimeline = (campaign) => {
+    setSelectedCampaign(campaign);
+    setShowTimeline(true);
+  };
+
+  const handleScheduleIntervalChange = (campaignId, interval) => {
+    setCampaigns(prev => prev.map(c => 
+      c.id === campaignId ? { ...c, schedule_interval: interval } : c
+    ));
+  };
+
+  const handleManualSchedule = (video) => {
+    setScheduleModalVideo(video);
+  };
+
+  const handleScheduleVideo = (videoId, publishTime) => {
+    setVideos(prev => prev.map(v => 
+      v.id === videoId ? { ...v, publish_time: publishTime, status: 'ready' } : v
+    ));
+    setScheduleModalVideo(null);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -82,14 +110,33 @@ export function CampaignsPage() {
             Quản lý chiến dịch và lịch đăng bài
           </p>
         </div>
-        <button
-          onClick={() => setShowWizard(true)}
-          className="btn-primary inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold"
-        >
-          <Plus className="h-4 w-4" />
-          Tạo chiến dịch
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowTimeline(!showTimeline)}
+            className={`btn-secondary inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium ${showTimeline ? 'bg-cyan-400/20 border-cyan-400/50' : ''}`}
+          >
+            <Calendar className="h-4 w-4" />
+            {showTimeline ? 'Ẩn timeline' : 'Timeline'}
+          </button>
+          <button
+            onClick={() => setShowWizard(true)}
+            className="btn-primary inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold"
+          >
+            <Plus className="h-4 w-4" />
+            Tạo chiến dịch
+          </button>
+        </div>
       </div>
+
+      {showTimeline && selectedCampaign && (
+        <ScheduleTimeline
+          campaign={selectedCampaign}
+          videos={videos.filter(v => v.campaign_id === selectedCampaign.id)}
+          onScheduleIntervalChange={(interval) => handleScheduleIntervalChange(selectedCampaign.id, interval)}
+          onManualSchedule={handleManualSchedule}
+          isLoading={isLoading}
+        />
+      )}
 
       <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/8 bg-black/10 p-3">
         <div className="relative flex-1 min-w-[200px]">
@@ -132,6 +179,7 @@ export function CampaignsPage() {
             onDelete={handleDeleteCampaign}
             onToggleStatus={handleToggleStatus}
             onSync={handleSync}
+            onViewTimeline={handleViewTimeline}
           />
         ))}
       </div>
@@ -165,6 +213,13 @@ export function CampaignsPage() {
           initialData={editingCampaign}
         />
       )}
+
+      <ManualScheduleModal
+        video={scheduleModalVideo}
+        isOpen={!!scheduleModalVideo}
+        onClose={() => setScheduleModalVideo(null)}
+        onSchedule={handleScheduleVideo}
+      />
     </div>
   );
 }

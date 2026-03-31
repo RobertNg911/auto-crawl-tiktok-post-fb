@@ -1,25 +1,34 @@
 import { useState, useMemo } from 'react';
-import { Filter, SortAsc, Trash2, RefreshCw, CheckSquare, Video } from 'lucide-react';
+import { Filter, SortAsc, Trash2, RefreshCw, CheckSquare, Video, Sparkles, Clock, Eye, EyeOff } from 'lucide-react';
 import { VideoCard } from './VideoCard';
 import { VideoPreviewModal } from './VideoPreviewModal';
 import { MOCK_VIDEOS } from '../../data/mockVideos';
 import { VIDEO_STATUS_OPTIONS, SORT_OPTIONS } from '../../data/mockVideos';
 import { MOCK_CAMPAIGNS } from '../../data/mockCampaigns';
 
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
 export function VideosPage() {
   const [videos, setVideos] = useState(MOCK_VIDEOS);
   const [statusFilter, setStatusFilter] = useState('all');
   const [campaignFilter, setCampaignFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('priority');
+  const [sortBy, setSortBy] = useState('views');
   const [sortOrder, setSortOrder] = useState('desc');
   const [selectedVideos, setSelectedVideos] = useState([]);
   const [previewVideo, setPreviewVideo] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showOldVideos, setShowOldVideos] = useState(false);
 
   const filteredVideos = useMemo(() => {
+    const now = Date.now();
     let result = videos.filter((video) => {
       if (statusFilter !== 'all' && video.status !== statusFilter) return false;
       if (campaignFilter !== 'all' && video.campaign_id !== campaignFilter) return false;
+      
+      const videoAge = now - new Date(video.created_at).getTime();
+      const isOld = videoAge > THIRTY_DAYS_MS;
+      if (isOld && !showOldVideos) return false;
+      
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         return (
@@ -51,14 +60,14 @@ export function VideosPage() {
           bVal = b.publish_time ? new Date(b.publish_time).getTime() : 0;
           break;
         default:
-          aVal = a.priority;
-          bVal = b.priority;
+          aVal = a.views;
+          bVal = b.views;
       }
       return sortOrder === 'desc' ? bVal - aVal : aVal - bVal;
     });
 
     return result;
-  }, [videos, statusFilter, campaignFilter, sortBy, sortOrder, searchQuery]);
+  }, [videos, statusFilter, campaignFilter, sortBy, sortOrder, searchQuery, showOldVideos]);
 
   const handleSelectVideo = (id, checked) => {
     setSelectedVideos((prev) =>
@@ -216,6 +225,18 @@ export function VideosPage() {
             </span>
           </button>
         ))}
+        
+        <button
+          onClick={() => setShowOldVideos(!showOldVideos)}
+          className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium transition ${
+            showOldVideos
+              ? 'border-amber-400/50 bg-amber-400/10 text-amber-100'
+              : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-white'
+          }`}
+        >
+          {showOldVideos ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          Video cũ (&gt;30 ngày)
+        </button>
       </div>
 
       {selectedVideos.length > 0 && (

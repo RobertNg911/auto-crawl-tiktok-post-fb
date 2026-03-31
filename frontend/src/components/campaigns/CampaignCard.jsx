@@ -1,7 +1,7 @@
-import { Play, Pause, RefreshCw, Trash2, MoreVertical, Users, Video, Clock } from 'lucide-react';
+import { Play, Pause, RefreshCw, Trash2, MoreVertical, Users, Video, Clock, Calendar } from 'lucide-react';
 import { useState } from 'react';
 
-export function CampaignCard({ campaign, onEdit, onDelete, onToggleStatus, onSync }) {
+export function CampaignCard({ campaign, onEdit, onDelete, onToggleStatus, onSync, onViewTimeline }) {
   const [showActions, setShowActions] = useState(false);
   const isActive = campaign.status === 'active';
   
@@ -81,6 +81,16 @@ export function CampaignCard({ campaign, onEdit, onDelete, onToggleStatus, onSyn
               >
                 <RefreshCw className="h-3.5 w-3.5" />
                 Đồng bộ ngay
+              </button>
+              <button
+                onClick={() => {
+                  onViewTimeline && onViewTimeline(campaign);
+                  setShowActions(false);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
+              >
+                <Calendar className="h-3.5 w-3.5" />
+                Xem lịch đăng
               </button>
               <button
                 onClick={() => {

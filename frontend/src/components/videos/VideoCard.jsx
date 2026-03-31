@@ -1,4 +1,4 @@
-import { Eye, Heart, MessageCircle, Clock, GripVertical, Play, MoreVertical, RefreshCw, Trash2, Edit, Send } from 'lucide-react';
+import { Eye, Heart, MessageCircle, Clock, GripVertical, Play, MoreVertical, RefreshCw, Trash2, Edit, Send, Share2, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 
 export function VideoCard({ video, onPreview, onRetry, onDelete, onEditPriority, onPublish }) {
@@ -36,9 +36,12 @@ export function VideoCard({ video, onPreview, onRetry, onDelete, onEditPriority,
               <Play className="h-8 w-8 text-slate-600" />
             </div>
           )}
-          <div className="absolute left-2 top-2 rounded-lg bg-black/70 px-2 py-1 text-xs font-medium text-white">
-            #{video.priority}
-          </div>
+          {video.is_new && (
+            <div className="absolute left-2 top-2 flex items-center gap-1 rounded-lg bg-cyan-500/90 px-2 py-1 text-xs font-medium text-white">
+              <Sparkles className="h-3 w-3" />
+              Mới
+            </div>
+          )}
         </div>
         
         <div className="flex flex-1 flex-col justify-between p-4">
@@ -112,6 +115,10 @@ export function VideoCard({ video, onPreview, onRetry, onDelete, onEditPriority,
             <div className="flex items-center gap-1 text-xs text-slate-400">
               <MessageCircle className="h-3.5 w-3.5" />
               <span>{video.comments_count?.toLocaleString()}</span>
+            </div>
+            <div className="flex items-center gap-1 text-xs text-slate-400">
+              <Share2 className="h-3.5 w-3.5" />
+              <span>{video.shares?.toLocaleString()}</span>
             </div>
             {video.publish_time && (
               <div className="flex items-center gap-1 text-xs text-slate-400">

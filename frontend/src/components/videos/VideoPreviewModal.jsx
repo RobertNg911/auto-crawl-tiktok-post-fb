@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Play, Pause, Clock, Calendar, Edit3, RefreshCw, Send, ExternalLink, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { X, Play, Pause, Clock, Calendar, Edit3, RefreshCw, Send, ExternalLink, Loader2, CheckCircle, AlertCircle, TrendingUp, Eye, Heart, MessageCircle, Share2 } from 'lucide-react';
 
 export function VideoPreviewModal({ video, onClose, onSave, onRetry, onRegenerateCaption, onPublish }) {
   const [caption, setCaption] = useState('');
@@ -107,24 +107,60 @@ export function VideoPreviewModal({ video, onClose, onSave, onRetry, onRegenerat
           </div>
 
           <div className="flex flex-1 flex-col p-5">
-            <div className="mb-4 space-y-2 text-sm">
-              <div className="flex items-center gap-2">
-                <span className="text-slate-400">Chiến dịch:</span>
-                <span className="text-white">{video.campaign_name}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-slate-400">Lượt xem:</span>
-                <span className="text-white">{video.views?.toLocaleString()}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-slate-400">Lượt thích:</span>
-                <span className="text-white">{video.likes?.toLocaleString()}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-slate-400">Bình luận:</span>
-                <span className="text-white">{video.comments_count?.toLocaleString()}</span>
+            <div className="mb-4">
+              <div className="grid grid-cols-4 gap-2 text-sm">
+                <div className="rounded-xl bg-white/5 p-3 text-center">
+                  <div className="flex items-center justify-center gap-1 text-cyan-400">
+                    <Eye className="h-4 w-4" />
+                  </div>
+                  <div className="mt-1 font-semibold text-white">{video.views?.toLocaleString()}</div>
+                  <div className="text-xs text-slate-500">Lượt xem</div>
+                </div>
+                <div className="rounded-xl bg-white/5 p-3 text-center">
+                  <div className="flex items-center justify-center gap-1 text-rose-400">
+                    <Heart className="h-4 w-4" />
+                  </div>
+                  <div className="mt-1 font-semibold text-white">{video.likes?.toLocaleString()}</div>
+                  <div className="text-xs text-slate-500">Lượt thích</div>
+                </div>
+                <div className="rounded-xl bg-white/5 p-3 text-center">
+                  <div className="flex items-center justify-center gap-1 text-amber-400">
+                    <MessageCircle className="h-4 w-4" />
+                  </div>
+                  <div className="mt-1 font-semibold text-white">{video.comments_count?.toLocaleString()}</div>
+                  <div className="text-xs text-slate-500">Bình luận</div>
+                </div>
+                <div className="rounded-xl bg-white/5 p-3 text-center">
+                  <div className="flex items-center justify-center gap-1 text-emerald-400">
+                    <Share2 className="h-4 w-4" />
+                  </div>
+                  <div className="mt-1 font-semibold text-white">{video.shares?.toLocaleString()}</div>
+                  <div className="text-xs text-slate-500">Chia sẻ</div>
+                </div>
               </div>
             </div>
+
+            {video.metrics_history && video.metrics_history.length > 0 && (
+              <div className="mb-4 rounded-xl border border-white/8 bg-black/10 p-4">
+                <div className="mb-3 flex items-center gap-2 text-xs font-medium text-slate-400">
+                  <TrendingUp className="h-4 w-4" />
+                  Lịch sử metrics
+                </div>
+                <div className="space-y-2">
+                  {video.metrics_history.map((snapshot, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-sm">
+                      <span className="text-slate-500">{new Date(snapshot.date).toLocaleDateString('vi-VN')}</span>
+                      <div className="flex gap-4 text-slate-400">
+                        <span><Eye className="mr-1 inline h-3 w-3" />{snapshot.views?.toLocaleString()}</span>
+                        <span><Heart className="mr-1 inline h-3 w-3" />{snapshot.likes?.toLocaleString()}</span>
+                        <span><MessageCircle className="mr-1 inline h-3 w-3" />{snapshot.comments}</span>
+                        <span><Share2 className="mr-1 inline h-3 w-3" />{snapshot.shares}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="mb-4">
               <div className="mb-2 flex items-center justify-between">
