@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ChannelsPage } from './components/channels/ChannelsPage';
 import { CampaignsPage } from './components/campaigns/CampaignsPage';
+import { CampaignDetailPage } from './components/campaigns/CampaignDetailPage';
 import { VideosPage } from './components/videos/VideosPage';
 import { PagesPage } from './components/pages/PagesPage';
 import { CommentsPage } from './components/comments/CommentsPage';
+import { InboxPage } from './components/inbox/InboxPage';
+import { AISettingsPage } from './components/settings/AISettingsPage';
 import {
   Activity,
   AlertTriangle,
@@ -129,8 +133,10 @@ const NAV_ITEMS = [
   { id: 'campaigns', label: 'Chiến dịch', description: 'Nguồn, trang và chiến dịch.', icon: Share2 },
   { id: 'queue', label: 'Lịch đăng', description: 'Video, lịch và caption.', icon: Clock },
   { id: 'pages', label: 'Fanpage', description: 'Quản lý fanpage và AI.', icon: Globe2 },
+  { id: 'ai-settings', label: 'AI Settings', description: 'Prompt và automation settings.', icon: Bot },
   { id: 'engagement', label: 'Tương tác', description: 'Bình luận và phản hồi AI.', icon: Bot },
   { id: 'messages', label: 'Tin nhắn AI', description: 'Prompt và inbox tự động.', icon: MessagesSquare },
+  { id: 'inbox', label: 'Inbox', description: 'Quản lý hội thoại Messenger.', icon: MessagesSquare },
   { id: 'operations', label: 'Vận hành', description: 'Worker, queue và log.', icon: Server },
   { id: 'security', label: 'Bảo mật', description: 'Phiên, mật khẩu, người dùng.', icon: ShieldCheck },
 ];
@@ -244,6 +250,111 @@ function formatTrendLabel(dateString) {
   if (!dateString) return '--';
   const [, month, day] = dateString.split('-');
   return `${day}/${month}`;
+}
+
+function formatNumber(value) {
+  if (value == null) return '0';
+  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
+  return String(value);
+}
+
+function StatCard({ icon: Icon, label, value, tone = 'slate' }) {
+  return (
+    <div className="rounded-[22px] border border-white/8 bg-black/10 p-4">
+      <div className="flex items-center gap-3">
+        <div className={cx('rounded-xl border p-2.5', TONE_CLASSES[tone] || TONE_CLASSES.slate)}>
+          <Icon className="h-4 w-4" />
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--text-muted)]">{label}</div>
+          <div className="mt-1 font-display text-2xl font-semibold text-white">{formatNumber(value)}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VideosPostedAreaChart({ data }) {
+  if (!data || data.length === 0) {
+    return (
+      <div className="rounded-[22px] border border-white/8 bg-black/10 p-4">
+        <div className="mb-4 text-[11px] uppercase tracking-[0.24em] text-[var(--text-muted)]">Video đã đăng (7 ngày)</div>
+        <EmptyState title="Chưa có dữ liệu" description="Biểu đồ sẽ hiển thị khi có video được đăng." />
+      </div>
+    );
+  }
+
+  const chartData = data.map((item) => ({
+    date: formatTrendLabel(item.date),
+    count: item.count,
+  }));
+
+  return (
+    <div className="rounded-[22px] border border-white/8 bg-black/10 p-4">
+      <div className="mb-4 text-[11px] uppercase tracking-[0.24em] text-[var(--text-muted)]">Video đã đăng (7 ngày)</div>
+      <ResponsiveContainer width="100%" height={200}>
+        <AreaChart data={chartData}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+          <XAxis dataKey="date" tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 11 }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+          <Tooltip
+            contentStyle={{ backgroundColor: 'rgba(15,23,42,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff' }}
+            labelStyle={{ color: 'rgba(255,255,255,0.7)' }}
+          />
+          <Area type="monotone" dataKey="count" stroke="#67e8f9" fill="rgba(103,232,249,0.15)" strokeWidth={2} />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function TopVideosBarChart({ videos }) {
+  if (!videos || videos.length === 0) {
+    return (
+      <div className="rounded-[22px] border border-white/8 bg-black/10 p-4">
+        <div className="mb-4 text-[11px] uppercase tracking-[0.24em] text-[var(--text-muted)]">Top video theo views (tuần này)</div>
+        <EmptyState title="Chưa có dữ liệu" description="Biểu đồ sẽ hiển thị khi có video được đăng trong tuần." />
+      </div>
+    );
+  }
+
+  const chartData = videos.map((v, i) => ({
+    name: `#${i + 1}`,
+    views: v.views,
+    id: v.id,
+    original_id: v.original_id,
+  }));
+
+  return (
+    <div className="rounded-[22px] border border-white/8 bg-black/10 p-4">
+      <div className="mb-4 text-[11px] uppercase tracking-[0.24em] text-[var(--text-muted)]">Top video theo views (tuần này)</div>
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={chartData}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+          <XAxis dataKey="name" tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 11 }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={formatNumber} />
+          <Tooltip
+            contentStyle={{ backgroundColor: 'rgba(15,23,42,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff' }}
+            labelStyle={{ color: 'rgba(255,255,255,0.7)' }}
+            formatter={(value) => [formatNumber(value), 'Views']}
+          />
+          <Bar dataKey="views" fill="#34d399" radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+      <div className="mt-3 space-y-2">
+        {videos.slice(0, 5).map((v, i) => (
+          <div key={v.id} className="flex items-center justify-between rounded-xl border border-white/6 bg-black/10 px-3 py-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-[var(--text-muted)]">#{i + 1}</span>
+              <span className="text-xs text-white">{v.original_id || v.id.slice(0, 8)}</span>
+            </div>
+            <span className="text-xs font-semibold text-emerald-300">{formatNumber(v.views)} views</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function getStatusClasses(status) {
@@ -814,9 +925,11 @@ function App() {
   const [activeSection, setActiveSection] = useState(localStorage.getItem('dashboard-active-section') || 'overview');
   const [taskPage, setTaskPage] = useState(1);
   const [eventPage, setEventPage] = useState(1);
+  const [eventLevelFilter, setEventLevelFilter] = useState('all');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [expandedItems, setExpandedItems] = useState({});
   const [showAllMetrics, setShowAllMetrics] = useState(false);
+  const [campaignDetailId, setCampaignDetailId] = useState(null);
   const [overviewSourceFilter, setOverviewSourceFilter] = useState('all');
   const [conversationStatusFilter, setConversationStatusFilter] = useState('all');
   const [manualReplyDraft, setManualReplyDraft] = useState('');
@@ -824,8 +937,17 @@ function App() {
   const [conversationAssigneeDraft, setConversationAssigneeDraft] = useState('');
   const [engagementTab, setEngagementTab] = useState('logs');
   const [pendingOperatorComposerId, setPendingOperatorComposerId] = useState(null);
+  const [dashboardOverview, setDashboardOverview] = useState(null);
+  const [videosPostedChart, setVideosPostedChart] = useState(null);
+  const [viewsTrendChart, setViewsTrendChart] = useState(null);
   const manualReplyPanelRef = useRef(null);
   const manualReplyInputRef = useRef(null);
+  const [queueSelectedVideos, setQueueSelectedVideos] = useState([]);
+  const [queuePreviewVideo, setQueuePreviewVideo] = useState(null);
+  const [queueSortBy, setQueueSortBy] = useState('priority');
+  const [queueSortOrder, setQueueSortOrder] = useState('desc');
+  const [queueSearchQuery, setQueueSearchQuery] = useState('');
+  const [queueDragState, setQueueDragState] = useState(null);
 
   const isAdmin = currentUser?.role === 'admin';
   const staleWorkers = workers.filter((worker) => !worker.is_online);
@@ -920,6 +1042,27 @@ function App() {
   const setBusy = (key, value) => setActionState((current) => ({ ...current, [key]: value }));
   const showNotice = (type, message) => setNotice({ type, message });
 
+  const fetchDashboardOverview = async () => {
+    if (!token) return;
+    try {
+      const [overviewData, videosPostedData, viewsTrendData] = await Promise.all([
+        requestJson(`${API_URL}/dashboard/overview`),
+        requestJson(`${API_URL}/dashboard/charts/videos-posted`),
+        requestJson(`${API_URL}/dashboard/charts/views-trend`),
+      ]);
+      setDashboardOverview(overviewData);
+      setVideosPostedChart(videosPostedData);
+      setViewsTrendChart(viewsTrendData);
+    } catch {
+    }
+  };
+
+  const handleSyncAllCampaigns = async () => {
+    await runAction('sync-all-campaigns', () =>
+      requestJson(`${API_URL}/dashboard/sync-all`, { method: 'POST' }),
+    );
+  };
+
   const fetchDashboard = async () => {
     if (!token) return;
     setIsRefreshing(true);
@@ -940,7 +1083,7 @@ function App() {
         requestJson(`${API_URL}/system/overview`),
         requestJson(`${API_URL}/system/health`),
         requestJson(`${API_URL}/system/tasks?limit=${TASK_FETCH_LIMIT}`),
-        requestJson(`${API_URL}/system/events?limit=${SYSTEM_EVENT_FETCH_LIMIT}`),
+        requestJson(`${API_URL}/system/events?limit=${SYSTEM_EVENT_FETCH_LIMIT}${eventLevelFilter !== 'all' ? `&level=${eventLevelFilter}` : ''}`),
         requestJson(`${API_URL}/system/workers`),
         meData?.role === 'admin' ? requestJson(`${API_URL}/users/`) : Promise.resolve({ users: [] }),
       ]);
@@ -1022,9 +1165,13 @@ function App() {
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     fetchDashboard();
-    const interval = setInterval(fetchDashboard, AUTO_REFRESH_MS);
+    fetchDashboardOverview();
+    const interval = setInterval(() => {
+      fetchDashboard();
+      fetchDashboardOverview();
+    }, AUTO_REFRESH_MS);
     return () => clearInterval(interval);
-  }, [token, page, filters.status, filters.campaignId, filters.sourcePlatform]);
+  }, [token, page, filters.status, filters.campaignId, filters.sourcePlatform, eventLevelFilter]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
   useEffect(() => {
@@ -1552,6 +1699,95 @@ function App() {
     if (payload?.video) setCaptionDrafts((current) => ({ ...current, [videoId]: payload.video.ai_caption || '' }));
   };
 
+  const handleQueueToggleSelect = (id, checked) => {
+    setQueueSelectedVideos((prev) =>
+      checked ? [...prev, id] : prev.filter((v) => v !== id)
+    );
+  };
+
+  const handleQueueSelectAll = () => {
+    if (queueSelectedVideos.length === videos.length) {
+      setQueueSelectedVideos([]);
+    } else {
+      setQueueSelectedVideos(videos.map((v) => v.id));
+    }
+  };
+
+  const handleQueueBulkDelete = async () => {
+    if (queueSelectedVideos.length === 0) return;
+    if (!confirm('Xoa ' + queueSelectedVideos.length + ' video?')) return;
+    await runAction('bulk-delete-videos', () => requestJson(API_URL + '/videos/bulk-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ video_ids: queueSelectedVideos }),
+    }));
+    setQueueSelectedVideos([]);
+  };
+
+  const handleQueueBulkRegenerateCaption = async () => {
+    for (const id of queueSelectedVideos) {
+      await handleRegenerateCaption(id);
+    }
+  };
+
+  const handleQueueDragStart = (video) => {
+    setQueueDragState({ draggedVideo: video });
+  };
+
+  const handleQueueDragOver = (e, targetVideo) => {
+    e.preventDefault();
+    if (!queueDragState || queueDragState.draggedVideo.id === targetVideo.id) return;
+    const draggedIdx = videos.findIndex((v) => v.id === queueDragState.draggedVideo.id);
+    const targetIdx = videos.findIndex((v) => v.id === targetVideo.id);
+    if (draggedIdx < 0 || targetIdx < 0) return;
+    const reordered = [...videos];
+    const [removed] = reordered.splice(draggedIdx, 1);
+    reordered.splice(targetIdx, 0, removed);
+    const newPriorities = reordered.map((v, idx) => ({ video_id: v.id, priority: idx + 1 }));
+    setVideos(reordered);
+    setQueueDragState({ draggedVideo: queueDragState.draggedVideo, pendingPriorities: newPriorities });
+  };
+
+  const handleQueueDrop = async () => {
+    if (!queueDragState?.pendingPriorities) {
+      setQueueDragState(null);
+      return;
+    }
+    try {
+      await requestJson(API_URL + '/videos/bulk-priority', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_priorities: queueDragState.pendingPriorities }),
+      });
+    } catch {
+      await fetchDashboard();
+    }
+    setQueueDragState(null);
+  };
+
+  const handleQueuePreviewSave = async (updates) => {
+    if (!queuePreviewVideo) return;
+    await runAction('video-update-' + queuePreviewVideo.id, () => requestJson(API_URL + '/videos/' + queuePreviewVideo.id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    }));
+    setQueuePreviewVideo((prev) => prev ? { ...prev, ...updates } : null);
+  };
+
+  const handleQueuePreviewPublish = async (videoId) => {
+    const payload = await runAction('video-publish-' + videoId, () => requestJson(API_URL + '/videos/' + videoId, { method: 'POST' }));
+    return payload?.fb_post_id;
+  };
+
+  const handleQueuePreviewRegenerateCaption = async (videoId) => {
+    const payload = await runAction('video-generate-' + videoId, () => requestJson(API_URL + '/videos/' + videoId + '/regenerate-caption', { method: 'POST' }));
+    if (payload?.ai_caption) {
+      setCaptionDrafts((current) => ({ ...current, [videoId]: payload.ai_caption }));
+      setQueuePreviewVideo((prev) => prev ? { ...prev, ai_caption: payload.ai_caption } : null);
+    }
+  };
+
   const handleCampaignAction = async (campaign, action) => {
     if (action === 'delete') {
       const confirmed = window.confirm(`Xóa chiến dịch "${campaign.name}" và toàn bộ video liên quan?`);
@@ -1687,6 +1923,47 @@ function App() {
 
   const renderOverviewSection = () => (
     <div className="grid gap-6 2xl:grid-cols-12">
+      {dashboardOverview && (
+        <>
+          <Panel className="2xl:col-span-12" eyebrow="Tổng quan" title="Chỉ số chính">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+              <StatCard icon={UserPlus} label="Kênh active" value={dashboardOverview.stats.total_channels} tone="sky" />
+              <StatCard icon={Share2} label="Campaign active" value={dashboardOverview.stats.active_campaigns} tone="emerald" />
+              <StatCard icon={Clock} label="Video trong queue" value={dashboardOverview.stats.videos_queued} tone="amber" />
+              <StatCard icon={Activity} label="Video đăng hôm nay" value={dashboardOverview.stats.videos_posted_today} tone="emerald" />
+              <StatCard icon={MessagesSquare} label="Reply hôm nay" value={dashboardOverview.stats.comments_replied_today} tone="sky" />
+            </div>
+          </Panel>
+
+          <Panel className="2xl:col-span-7" eyebrow="Biểu đồ" title="Xu hướng đăng video">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <VideosPostedAreaChart data={dashboardOverview.videos_posted_trend} />
+              <TopVideosBarChart videos={dashboardOverview.top_videos_this_week} />
+            </div>
+          </Panel>
+
+          <Panel className="2xl:col-span-5" eyebrow="Thao tác nhanh" title="Quick Actions">
+            <div className="space-y-4">
+              <button type="button" className={cx(BUTTON_PRIMARY, 'w-full')} onClick={handleSyncAllCampaigns} disabled={actionState['sync-all-campaigns']}>
+                <RefreshCw className={cx('h-4 w-4', actionState['sync-all-campaigns'] ? 'animate-spin' : '')} />
+                {actionState['sync-all-campaigns'] ? 'Đang đồng bộ...' : 'Sync tất cả campaign'}
+              </button>
+              <button type="button" className={cx(BUTTON_SECONDARY, 'w-full')} onClick={() => handleSectionChange('campaigns')}>
+                <PlusCircle className="h-4 w-4" />
+                Tạo campaign mới
+              </button>
+              <div className="rounded-[20px] border border-white/8 bg-black/10 p-4">
+                <div className="text-[11px] uppercase tracking-[0.24em] text-[var(--text-muted)]">Tổng quan nhanh</div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <InfoRow label="Cuộc hội thoại pending" value={dashboardOverview.stats.pending_conversations} />
+                  <InfoRow label="Lần cập nhật cuối" value={formatDateTime(lastUpdatedAt)} />
+                </div>
+              </div>
+            </div>
+          </Panel>
+        </>
+      )}
+
       <Panel
         className="2xl:col-span-8"
         eyebrow="Kết nối công khai"
@@ -3304,12 +3581,28 @@ function App() {
 
   const renderActiveSection = () => {
     switch (activeSection) {
-      case 'channels': return <ChannelsPage />;
-      case 'campaigns': return <CampaignsPage />;
+      case 'channels': return <ChannelsPage token={token} />;
+      case 'campaigns':
+        return campaignDetailId ? (
+          <CampaignDetailPage
+            campaignId={campaignDetailId}
+            onBack={() => setCampaignDetailId(null)}
+            token={token}
+            showNotice={showNotice}
+          />
+        ) : (
+          <CampaignsPage
+            token={token}
+            onNavigateDetail={(id) => setCampaignDetailId(id)}
+            showNotice={showNotice}
+          />
+        );
       case 'queue': return <VideosPage />;
       case 'pages': return <PagesPage fbPages={fbPages} setFbPages={setFbPages} onRefreshDashboard={fetchDashboard} token={token} />;
+      case 'ai-settings': return <AISettingsPage fbPages={fbPages} token={token} onNotice={showNotice} />;
       case 'engagement': return renderEngagementSection();
       case 'messages': return renderMessagesSection();
+      case 'inbox': return <InboxPage token={token} currentUser={currentUser} />;
       case 'operations': return renderOperationsSection();
       case 'security': return renderSecuritySection();
       case 'overview':
