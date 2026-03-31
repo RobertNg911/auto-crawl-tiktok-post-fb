@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.time import utc_now
-from app.models.models import Campaign, Video, VideoStatus
+from app.models.models import Campaign, Video, VideoStatus, VideoMetricsSnapshot
 from app.services.campaign_jobs import publish_video_job
 from app.services.task_queue import TASK_TYPE_VIDEO_PUBLISH, enqueue_task
 
@@ -50,10 +50,11 @@ class VideoResponse(BaseModel):
     fb_post_id: Optional[str]
     retry_count: int
     created_at: str
+    metrics_history: Optional[list] = None
 
     @classmethod
-    def from_orm(cls, video: Video):
-        return cls(
+    def from_orm(cls, video: Video, metrics_history: Optional[list] = None):
+        result = cls(
             id=str(video.id),
             campaign_id=str(video.campaign_id) if video.campaign_id else None,
             campaign_name=video.campaign.name if video.campaign else None,
@@ -75,6 +76,8 @@ class VideoResponse(BaseModel):
             retry_count=video.retry_count or 0,
             created_at=video.created_at.isoformat() if video.created_at else "",
         )
+        result.metrics_history = metrics_history
+        return result
 
 
 def parse_uuid_or_400(raw_id: str, label: str):
@@ -152,7 +155,25 @@ def get_video(video_id: str, db: Session = Depends(get_db)):
     if not video:
         raise HTTPException(status_code=404, detail="Không tìm thấy video")
 
-    return VideoResponse.from_orm(video)
+    snapshots = (
+        db.query(VideoMetricsSnapshot)
+        .filter(VideoMetricsSnapshot.video_id == video_uuid)
+        .order_by(VideoMetricsSnapshot.snapshot_date.desc())
+        .limit(10)
+        .all()
+    )
+    metrics_history = [
+        {
+            "date": s.snapshot_date.isoformat() if s.snapshot_date else None,
+            "views": s.views,
+            "likes": s.likes,
+            "comments": s.comments,
+            "shares": s.shares,
+        }
+        for s in snapshots
+    ]
+
+    return VideoResponse.from_orm(video, metrics_history=metrics_history)
 
 
 @router.patch("/{video_id}", response_model=VideoResponse)
@@ -276,3 +297,41 @@ def publish_video(video_id: str, db: Session = Depends(get_db)):
     raise HTTPException(
         status_code=500, detail=result.get("error", "Đăng video thất bại")
     )
+
+
+@router.get("/{video_id}/metrics-history", response_model=dict)
+def get_video_metrics_history(video_id: str, db: Session = Depends(get_db)):
+    video_uuid = parse_uuid_or_400(video_id, "Mã video")
+    video = (
+        db.query(Video)
+        .filter(
+            Video.id == video_uuid,
+            Video.is_deleted == False,
+        )
+        .first()
+    )
+
+    if not video:
+        raise HTTPException(status_code=404, detail="Không tìm thấy video")
+
+    snapshots = (
+        db.query(VideoMetricsSnapshot)
+        .filter(VideoMetricsSnapshot.video_id == video_uuid)
+        .order_by(VideoMetricsSnapshot.snapshot_date.desc())
+        .limit(30)
+        .all()
+    )
+
+    return {
+        "video_id": video_id,
+        "items": [
+            {
+                "date": s.snapshot_date.isoformat() if s.snapshot_date else None,
+                "views": s.views,
+                "likes": s.likes,
+                "comments": s.comments,
+                "shares": s.shares,
+            }
+            for s in snapshots
+        ],
+    }

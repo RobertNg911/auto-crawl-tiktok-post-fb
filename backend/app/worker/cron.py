@@ -20,6 +20,7 @@ from app.models.models import (
 )
 from app.services.ai_generator import generate_caption
 from app.services.fb_graph import upload_video_to_facebook
+from app.services.campaign_jobs import sync_video_metrics_for_campaign
 from app.services.observability import record_event, update_worker_heartbeat
 from app.services.security import decrypt_secret
 from app.services.tiktok_analytics import extract_channel_metrics
@@ -296,6 +297,65 @@ def sync_channel_metrics_job():
         db.close()
 
 
+def sync_video_metrics_job():
+    db: Session = SessionLocal()
+    update_worker_heartbeat(
+        WORKER_NAME, app_role=settings.APP_ROLE, status="đồng bộ metrics video", db=db
+    )
+    try:
+        campaigns = (
+            db.query(Campaign)
+            .filter(
+                Campaign.status == CampaignStatus.active,
+            )
+            .all()
+        )
+
+        total_new_videos = 0
+        total_metrics_updated = 0
+        error_count = 0
+
+        for campaign in campaigns:
+            try:
+                result = sync_video_metrics_for_campaign(str(campaign.id))
+                total_new_videos += result.get("new_videos", 0)
+                total_metrics_updated += result.get("metrics_updated", 0)
+            except Exception as exc:
+                error_count += 1
+                record_event(
+                    "analytics",
+                    "error",
+                    f"Đồng bộ metrics video cho campaign {campaign.id} thất bại.",
+                    db=db,
+                    details={"campaign_id": str(campaign.id), "error": str(exc)},
+                )
+
+        record_event(
+            "analytics",
+            "info",
+            "Đã đồng bộ metrics video cho các campaign.",
+            db=db,
+            details={
+                "new_videos": total_new_videos,
+                "metrics_updated": total_metrics_updated,
+                "errors": error_count,
+            },
+        )
+    except Exception as exc:
+        record_event(
+            "worker",
+            "error",
+            "Tác vụ đồng bộ metrics video thất bại.",
+            db=db,
+            details={"error": str(exc), "traceback": traceback.format_exc()},
+        )
+    finally:
+        update_worker_heartbeat(
+            WORKER_NAME, app_role=settings.APP_ROLE, status="idle", db=db
+        )
+        db.close()
+
+
 def start_scheduler():
     if not scheduler.get_job("auto_post_job"):
         scheduler.add_job(
@@ -334,6 +394,16 @@ def start_scheduler():
             id="sync_channel_metrics_job",
             hour=0,
             minute=0,
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+    if not scheduler.get_job("sync_video_metrics_job"):
+        scheduler.add_job(
+            sync_video_metrics_job,
+            "interval",
+            id="sync_video_metrics_job",
+            hours=6,
             replace_existing=True,
             max_instances=1,
             coalesce=True,

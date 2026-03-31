@@ -47,6 +47,14 @@ def _run_task(task) -> dict:
         )
     if task.task_type == TASK_TYPE_MESSAGE_REPLY:
         return reply_to_message_job(payload.get("message_log_id", task.entity_id or ""))
+    if task.task_type == TASK_TYPE_CHANNEL_METRICS_SYNC:
+        return sync_channel_metrics_for_target_channel(
+            payload.get("target_channel_id", task.entity_id or "")
+        )
+    if task.task_type == TASK_TYPE_VIDEO_METRICS_SYNC:
+        return sync_video_metrics_for_campaign(
+            payload.get("campaign_id", task.entity_id or "")
+        )
     raise ValueError(f"Loại tác vụ không được hỗ trợ: {task.task_type}")
 
 
