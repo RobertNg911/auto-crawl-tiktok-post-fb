@@ -1,10 +1,19 @@
 import { Edit2, Trash2, MoreVertical, Users, Video, Eye } from 'lucide-react';
 
-export function ChannelCard({ channel, onEdit, onDelete, onToggleStatus, isSelected, onSelect }) {
+export function ChannelCard({ channel, onEdit, onDelete, onToggleStatus, isSelected, onSelect, onClick }) {
   const isActive = channel.status === 'active';
   
+  const handleCardClick = (e) => {
+    if (onClick && !e.target.closest('button') && !e.target.closest('input')) {
+      onClick(channel);
+    }
+  };
+  
   return (
-    <div className="group relative overflow-hidden rounded-[22px] border border-white/8 bg-black/10 p-4 transition hover:border-white/16 hover:bg-black/15">
+    <div 
+      className="group relative overflow-hidden rounded-[22px] border border-white/8 bg-black/10 p-4 transition hover:border-white/16 hover:bg-black/15 cursor-pointer"
+      onClick={handleCardClick}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-1 items-start gap-3">
           <label className="flex cursor-pointer items-center pt-1">

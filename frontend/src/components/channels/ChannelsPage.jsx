@@ -3,6 +3,7 @@ import { Plus, Users, RefreshCw } from 'lucide-react';
 import { ChannelCard } from './ChannelCard';
 import { ChannelFilters } from './ChannelFilters';
 import { ChannelForm } from './ChannelForm';
+import { ChannelDetailPage } from './ChannelDetailPage';
 import { MOCK_CHANNELS } from '../../data/mockChannels';
 
 export function ChannelsPage() {
@@ -12,6 +13,7 @@ export function ChannelsPage() {
   const [editingChannel, setEditingChannel] = useState(null);
   const [selectedChannels, setSelectedChannels] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [viewingChannel, setViewingChannel] = useState(null);
 
   const filteredChannels = useMemo(() => {
     return channels.filter((channel) => {
@@ -97,6 +99,19 @@ export function ChannelsPage() {
     }
   };
 
+  const handleViewChannel = (channel) => {
+    setViewingChannel(channel);
+  };
+
+  if (viewingChannel) {
+    return (
+      <ChannelDetailPage 
+        channel={viewingChannel} 
+        onBack={() => setViewingChannel(null)} 
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -153,6 +168,7 @@ export function ChannelsPage() {
             channel={channel}
             isSelected={selectedChannels.includes(channel.id)}
             onSelect={handleSelectChannel}
+            onClick={handleViewChannel}
             onEdit={() => {
               setEditingChannel(channel);
               setShowForm(true);
