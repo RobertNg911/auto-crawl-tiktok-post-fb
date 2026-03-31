@@ -2607,7 +2607,45 @@ function App() {
       </Panel>
     </div>
   );
-  const renderQueueSection = () => (
+  const renderQueueSection = () => {
+    const statusCounts = {
+      all: videos.length,
+      pending: videos.filter((v) => v.status === 'pending').length,
+      downloading: videos.filter((v) => v.status === 'downloading').length,
+      ready: videos.filter((v) => v.status === 'ready').length,
+      posted: videos.filter((v) => v.status === 'posted').length,
+      failed: videos.filter((v) => v.status === 'failed').length,
+    };
+
+    const sortedVideos = [...videos].sort((a, b) => {
+      let aVal, bVal;
+      if (queueSortBy === 'priority') {
+        aVal = a.priority || 0;
+        bVal = b.priority || 0;
+      } else if (queueSortBy === 'views') {
+        aVal = a.views || 0;
+        bVal = b.views || 0;
+      } else if (queueSortBy === 'publish_time') {
+        aVal = a.publish_time ? new Date(a.publish_time).getTime() : 0;
+        bVal = b.publish_time ? new Date(b.publish_time).getTime() : 0;
+      } else {
+        aVal = a.priority || 0;
+        bVal = b.priority || 0;
+      }
+      return queueSortOrder === 'desc' ? bVal - aVal : aVal - bVal;
+    });
+
+    const filteredVideos = queueSearchQuery
+      ? sortedVideos.filter((v) => {
+          const q = queueSearchQuery.toLowerCase();
+          return (v.original_caption || '').toLowerCase().includes(q) ||
+                 (v.ai_caption || '').toLowerCase().includes(q) ||
+                 (v.campaign_name || '').toLowerCase().includes(q) ||
+                 (v.original_id || '').toLowerCase().includes(q);
+        })
+      : sortedVideos;
+
+    return (
     <div className="space-y-6">
       <Panel eyebrow="Bộ lọc" title="Hàng chờ đăng bài">
         <div className="grid gap-4 xl:grid-cols-[220px_280px_220px_minmax(0,1fr)]">
@@ -2652,99 +2690,394 @@ function App() {
         </div>
       </Panel>
 
-      <Panel eyebrow="Danh sách video" title="Can thiệp trực tiếp vào lịch đăng" action={<div className="rounded-[22px] border border-white/8 bg-black/10 px-4 py-3 text-sm text-[var(--text-soft)]">Trang {page} / {totalPages}</div>}>
-        {videos.length === 0 ? (
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/8 bg-black/10 p-3">
+        <div className="relative flex-1 min-w-[200px]">
+          <input
+            type="text"
+            placeholder="Tìm kiếm video..."
+            value={queueSearchQuery}
+            onChange={(e) => setQueueSearchQuery(e.target.value)}
+            className="field-input w-full rounded-xl py-2.5 px-4 text-sm"
+          />
+        </div>
+        <select
+          value={queueSortBy}
+          onChange={(e) => setQueueSortBy(e.target.value)}
+          className="field-input rounded-xl py-2.5 px-4 text-sm"
+        >
+          <option value="priority">Ưu tiên</option>
+          <option value="publish_time">Thời gian đăng</option>
+          <option value="views">Lượt xem</option>
+        </select>
+        <button
+          onClick={() => setQueueSortOrder((s) => (s === 'desc' ? 'asc' : 'desc'))}
+          className="btn-ghost inline-flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium"
+        >
+          <SortAsc className={cx('h-4 w-4 transition', queueSortOrder === 'desc' ? 'rotate-180' : '')} />
+          {queueSortOrder === 'desc' ? 'Giảm' : 'Tăng'}
+        </button>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {STATUS_FILTERS.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => setFilters((current) => ({ ...current, status: opt.value }))}
+            className={cx('rounded-xl border px-3 py-1.5 text-sm font-medium transition',
+              filters.status === opt.value
+                ? 'border-cyan-400/50 bg-cyan-400/10 text-cyan-100'
+                : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-white'
+            )}
+          >
+            {opt.label}
+            <span className="ml-1.5 rounded-full bg-black/30 px-1.5 py-0.5 text-xs">
+              {statusCounts[opt.value] || 0}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {queueSelectedVideos.length > 0 && (
+        <div className="flex items-center gap-3 rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3">
+          <span className="text-sm text-cyan-100">
+            {queueSelectedVideos.length} video được chọn
+          </span>
+          <div className="ml-auto flex gap-2">
+            <button
+              onClick={handleQueueBulkRegenerateCaption}
+              className="text-sm text-cyan-400 transition hover:text-cyan-300"
+            >
+              Tạo lại caption
+            </button>
+            <button
+              onClick={handleQueueBulkDelete}
+              className="text-sm text-rose-400 transition hover:text-rose-300"
+            >
+              Xóa đã chọn
+            </button>
+            <button
+              onClick={() => setQueueSelectedVideos([])}
+              className="text-sm text-slate-400 transition hover:text-white"
+            >
+              Bỏ chọn
+            </button>
+          </div>
+        </div>
+      )}
+
+      <Panel eyebrow="Danh sách video" title="Can thiệp trực tiếp vào lịch đăng" action={
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-slate-400">
+            <input
+              type="checkbox"
+              checked={queueSelectedVideos.length === filteredVideos.length && filteredVideos.length > 0}
+              onChange={handleQueueSelectAll}
+              className="h-4 w-4 rounded border-white/20 bg-white/5 text-cyan-500 focus:ring-cyan-500"
+            />
+            Chọn tất cả
+          </label>
+          <div className="rounded-[22px] border border-white/8 bg-black/10 px-4 py-3 text-sm text-[var(--text-soft)]">Trang {page} / {totalPages}</div>
+        </div>
+      }>
+        {filteredVideos.length === 0 ? (
           <EmptyState title="Không có video phù hợp bộ lọc" description="Thử đổi bộ lọc." />
         ) : (
-          <div className="space-y-4">
-            {videos.map((video) => {
+          <div className="space-y-3">
+            {filteredVideos.map((video) => {
               const isExpanded = !!expandedItems[`video:${video.id}`];
               const sourcePlatformMeta = getSourcePlatformMeta(video.source_platform);
+              const isSelected = queueSelectedVideos.includes(video.id);
+              const isDragging = queueDragState?.draggedVideo?.id === video.id;
               return (
-                <article key={video.id} className="rounded-[22px] border border-white/8 bg-black/10 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="text-[11px] uppercase tracking-[0.24em] text-[var(--text-muted)]">{video.campaign_name || 'Chưa rõ chiến dịch'}</div>
-                      <div className="mt-2 font-display text-base font-semibold text-white sm:text-[1.05rem]">{video.original_id}</div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <span className={cx('inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium', getStatusClasses(video.status))}>
-                          <StatusIcon status={video.status} />
-                          {getStatusLabel(video.status)}
-                        </span>
-                        <StatusPill tone={sourcePlatformMeta.tone}>{sourcePlatformMeta.label}</StatusPill>
-                        <StatusPill tone="slate">{getSourceKindLabel(video.source_kind)}</StatusPill>
-                        <StatusPill tone={video.target_page_name ? 'sky' : 'amber'} icon={Globe2}>{video.target_page_name || video.target_page_id || 'Chưa gắn fanpage'}</StatusPill>
+                <article
+                  key={video.id}
+                  draggable
+                  onDragStart={() => handleQueueDragStart(video)}
+                  onDragOver={(e) => handleQueueDragOver(e, video)}
+                  onDrop={handleQueueDrop}
+                  onDragEnd={handleQueueDrop}
+                  className={cx(
+                    'group relative overflow-hidden rounded-[22px] border border-white/8 bg-black/10 transition hover:border-white/16 hover:bg-black/15',
+                    isDragging && 'opacity-50 border-cyan-400/30',
+                    isSelected && 'border-cyan-400/30 bg-cyan-400/5'
+                  )}
+                >
+                  <div className="flex">
+                    <div className="flex cursor-grab items-center justify-center bg-white/5 px-2 py-4 text-slate-600 hover:text-slate-400">
+                      <GripVertical className="h-5 w-5" />
+                    </div>
+
+                    <div className="flex items-center px-3">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => handleQueueToggleSelect(video.id, e.target.checked)}
+                        className="h-4 w-4 rounded border-white/20 bg-white/5 text-cyan-500 focus:ring-cyan-500"
+                      />
+                    </div>
+
+                    <div className="relative min-w-[120px] w-[120px] shrink-0 cursor-pointer" onClick={() => setQueuePreviewVideo(video)}>
+                      {video.thumbnail_url ? (
+                        <img src={video.thumbnail_url} alt="Thumbnail" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-black/20">
+                          <Play className="h-8 w-8 text-slate-600" />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition group-hover:opacity-100">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm">
+                          <Play className="ml-0.5 h-5 w-5 text-white" />
+                        </div>
                       </div>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <InfoRow label="Lịch đăng" value={formatDateTime(video.publish_time)} emphasis />
-                      <InfoRow label="Số lần retry" value={video.retry_count ?? 0} />
-                    </div>
-                  </div>
-                  <div className="mt-3 text-sm text-[var(--text-soft)]">
-                    {summarizeText(captionDrafts[video.id] ?? video.ai_caption ?? video.original_caption, 'Chưa có caption để xem nhanh.')}
-                  </div>
-                  <div className="mt-3 flex justify-start">
-                    <DetailToggle expanded={isExpanded} onClick={() => toggleExpandedItem(`video:${video.id}`)} />
-                  </div>
-                  {isExpanded ? (
-                    <div className="mt-5 grid gap-5 xl:grid-cols-[0.88fr_1.12fr]">
-                      <div className="space-y-4">
-                        <div className="rounded-[24px] border border-white/8 bg-black/10 p-4">
-                          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">
-                            <CloudDownload className="h-3.5 w-3.5" />
-                            Nguồn video
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
+
+                    <div className="flex flex-1 flex-col justify-between p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className={cx('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium', getStatusClasses(video.status))}>
+                              <StatusIcon status={video.status} />
+                              {getStatusLabel(video.status)}
+                            </span>
+                            <span className="text-xs text-slate-500">#{video.priority}</span>
                             <StatusPill tone={sourcePlatformMeta.tone}>{sourcePlatformMeta.label}</StatusPill>
-                            <StatusPill tone="slate">{getSourceKindLabel(video.source_kind)}</StatusPill>
                           </div>
-                          {video.source_video_url ? (
-                            <a href={video.source_video_url} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 break-all text-sm text-cyan-100 hover:text-white">
-                              {video.source_video_url}
-                              <ExternalLink className="h-4 w-4 shrink-0" />
-                            </a>
-                          ) : <div className="mt-3 text-sm text-[var(--text-soft)]">Chưa có đường dẫn nguồn.</div>}
+                          <p className="mt-2 line-clamp-2 text-sm font-medium text-white">
+                            {video.ai_caption || video.original_caption || 'Không có caption'}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500 truncate">
+                            {video.campaign_name || 'Chưa rõ chiến dịch'}
+                          </p>
                         </div>
-                        <div className="rounded-[24px] border border-white/8 bg-black/10 p-4">
-                          <div className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Caption gốc</div>
-                          <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[var(--text-soft)]">{video.original_caption || 'Chưa có caption gốc từ nguồn.'}</div>
-                        </div>
-                        {video.last_error ? <div className="rounded-[24px] border border-rose-400/20 bg-rose-400/10 p-4 text-sm leading-7 text-rose-100">{video.last_error}</div> : null}
                       </div>
-                      <div className="rounded-[24px] border border-white/8 bg-black/10 p-4">
-                        <div className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Caption AI có thể chỉnh tay</div>
-                        <textarea className={cx(FIELD_CLASS, 'mt-4 min-h-[220px] resize-y')} value={captionDrafts[video.id] ?? ''} onChange={(event) => handleCaptionChange(video.id, event.target.value)} placeholder="Chú thích AI sẽ xuất hiện ở đây..." />
-                        <div className="mobile-action-stack mt-4">
-                          {video.status === 'ready' ? <button type="button" className={BUTTON_SECONDARY} onClick={() => handlePrioritize(video.id)} disabled={actionState[`video-${video.id}`]}><Play className="h-4 w-4" />{actionState[`video-${video.id}`] ? 'Đang ưu tiên...' : 'Đẩy lên đầu hàng chờ'}</button> : null}
-                          {video.status === 'failed' ? <button type="button" className={BUTTON_SECONDARY} onClick={() => handleRetryVideo(video.id)} disabled={actionState[`video-retry-${video.id}`]}><RefreshCw className="h-4 w-4" />{actionState[`video-retry-${video.id}`] ? 'Đang retry...' : 'Retry video'}</button> : null}
-                          <button type="button" className={BUTTON_GHOST} onClick={() => handleRegenerateCaption(video.id)} disabled={actionState[`video-generate-${video.id}`]}>
-                            <Zap className="h-4 w-4" />
-                            {actionState[`video-generate-${video.id}`] ? 'Đang tạo lại...' : 'Tạo lại caption'}
-                          </button>
-                          <button type="button" className={BUTTON_PRIMARY} onClick={() => handleSaveCaption(video.id)} disabled={actionState[`video-caption-${video.id}`]}>
-                            <CircleCheck className="h-4 w-4" />
-                            {actionState[`video-caption-${video.id}`] ? 'Đang lưu...' : 'Lưu caption'}
-                          </button>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-4">
+                        <div className="flex items-center gap-1 text-xs text-slate-400">
+                          <Eye className="h-3.5 w-3.5" />
+                          <span>{(video.views || 0).toLocaleString()}</span>
                         </div>
+                        <div className="flex items-center gap-1 text-xs text-slate-400">
+                          <Heart className="h-3.5 w-3.5" />
+                          <span>{(video.likes || 0).toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-xs text-slate-400">
+                          <MessageCircle className="h-3.5 w-3.5" />
+                          <span>{(video.comments_count || 0).toLocaleString()}</span>
+                        </div>
+                        {video.publish_time && (
+                          <div className="flex items-center gap-1 text-xs text-slate-400">
+                            <Clock className="h-3.5 w-3.5" />
+                            <span>{new Date(video.publish_time).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</span>
+                          </div>
+                        )}
+                        {video.status === 'failed' && video.last_error && (
+                          <div className="text-xs text-rose-400 truncate max-w-[200px]">
+                            Lỗi: {video.last_error}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  ) : null}
+
+                    <div className="flex flex-col justify-center gap-2 pr-4">
+                      <button
+                        type="button"
+                        onClick={() => setQueuePreviewVideo(video)}
+                        className="btn-ghost flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium"
+                      >
+                        <Play className="h-3.5 w-3.5" />
+                        Xem
+                      </button>
+                      {video.status === 'ready' && (
+                        <button
+                          type="button"
+                          onClick={() => handlePrioritize(video.id)}
+                          disabled={actionState[`video-${video.id}`]}
+                          className="btn-ghost flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-emerald-400"
+                        >
+                          <Zap className="h-3.5 w-3.5" />
+                          Ưu tiên
+                        </button>
+                      )}
+                      {video.status === 'failed' && (
+                        <button
+                          type="button"
+                          onClick={() => handleRetryVideo(video.id)}
+                          disabled={actionState[`video-retry-${video.id}`]}
+                          className="btn-ghost flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" />
+                          Retry
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </article>
               );
             })}
           </div>
         )}
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/8 pt-5">
-          <div className="text-sm text-[var(--text-soft)]">Đang xem {videos.length} video ở trang {page}.</div>
+          <div className="text-sm text-[var(--text-soft)]">Đang xem {filteredVideos.length} video ở trang {page}.</div>
           <div className="mobile-action-stack sm:justify-end">
             <button type="button" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} className={BUTTON_GHOST}>Trước</button>
             <button type="button" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))} className={BUTTON_GHOST}>Sau</button>
           </div>
         </div>
       </Panel>
+
+      {queuePreviewVideo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-3xl rounded-[24px] border border-white/12 bg-[var(--panel-bg)] shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-white/8 p-4">
+              <div className="flex items-center gap-3">
+                <span className={cx('inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium', getStatusClasses(queuePreviewVideo.status))}>
+                  <StatusIcon status={queuePreviewVideo.status} />
+                  {getStatusLabel(queuePreviewVideo.status)}
+                </span>
+                <span className="text-sm text-slate-400">#{queuePreviewVideo.priority}</span>
+                <span className="text-sm text-slate-400">{queuePreviewVideo.campaign_name || ''}</span>
+              </div>
+              <button onClick={() => setQueuePreviewVideo(null)} className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-400 transition hover:border-white/18 hover:bg-white/10 hover:text-white">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-col lg:flex-row">
+              <div className="w-full lg:w-1/2">
+                {queuePreviewVideo.thumbnail_url ? (
+                  <div className="relative aspect-[9/16] w-full overflow-hidden rounded-bl-[24px]">
+                    <img src={queuePreviewVideo.thumbnail_url} alt="Video thumbnail" className="h-full w-full object-cover" />
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm">
+                        <Play className="ml-1 h-8 w-8 text-white" />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex aspect-[9/16] w-full items-center justify-center bg-black/20 rounded-bl-[24px]">
+                    <Play className="h-16 w-16 text-slate-600" />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-1 flex-col p-5">
+                <div className="mb-4">
+                  <div className="grid grid-cols-4 gap-2 text-sm">
+                    <div className="rounded-xl bg-white/5 p-3 text-center">
+                      <div className="flex items-center justify-center gap-1 text-cyan-400"><Eye className="h-4 w-4" /></div>
+                      <div className="mt-1 font-semibold text-white">{(queuePreviewVideo.views || 0).toLocaleString()}</div>
+                      <div className="text-xs text-slate-500">Lượt xem</div>
+                    </div>
+                    <div className="rounded-xl bg-white/5 p-3 text-center">
+                      <div className="flex items-center justify-center gap-1 text-rose-400"><Heart className="h-4 w-4" /></div>
+                      <div className="mt-1 font-semibold text-white">{(queuePreviewVideo.likes || 0).toLocaleString()}</div>
+                      <div className="text-xs text-slate-500">Lượt thích</div>
+                    </div>
+                    <div className="rounded-xl bg-white/5 p-3 text-center">
+                      <div className="flex items-center justify-center gap-1 text-amber-400"><MessageCircle className="h-4 w-4" /></div>
+                      <div className="mt-1 font-semibold text-white">{(queuePreviewVideo.comments_count || 0).toLocaleString()}</div>
+                      <div className="text-xs text-slate-500">Bình luận</div>
+                    </div>
+                    <div className="rounded-xl bg-white/5 p-3 text-center">
+                      <div className="flex items-center justify-center gap-1 text-emerald-400"><Share2 className="h-4 w-4" /></div>
+                      <div className="mt-1 font-semibold text-white">{(queuePreviewVideo.shares || 0).toLocaleString()}</div>
+                      <div className="text-xs text-slate-500">Chia sẻ</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <label className="text-xs uppercase tracking-[0.28em] text-slate-400">Caption AI</label>
+                    <button
+                      onClick={() => handleQueuePreviewRegenerateCaption(queuePreviewVideo.id)}
+                      disabled={actionState[`video-generate-${queuePreviewVideo.id}`]}
+                      className="flex items-center gap-1 text-xs text-cyan-400 transition hover:text-cyan-300 disabled:opacity-50"
+                    >
+                      <RefreshCw className={cx('h-3 w-3', actionState[`video-generate-${queuePreviewVideo.id}`] ? 'animate-spin' : '')} />
+                      Tạo lại
+                    </button>
+                  </div>
+                  <textarea
+                    value={captionDrafts[queuePreviewVideo.id] ?? queuePreviewVideo.ai_caption ?? ''}
+                    onChange={(e) => handleCaptionChange(queuePreviewVideo.id, e.target.value)}
+                    rows={6}
+                    className="field-input w-full resize-none rounded-xl px-4 py-3 text-sm"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">{(captionDrafts[queuePreviewVideo.id] ?? queuePreviewVideo.ai_caption ?? '').length}/2200 ký tự</p>
+                </div>
+
+                <div className="mb-4">
+                  <label className="mb-2 block text-xs uppercase tracking-[0.28em] text-slate-400">
+                    Lên lịch đăng
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={queuePreviewVideo.publish_time ? queuePreviewVideo.publish_time.slice(0, 16) : ''}
+                    onChange={(e) => setQueuePreviewVideo((prev) => prev ? { ...prev, publish_time: e.target.value } : null)}
+                    className="field-input w-full rounded-xl px-4 py-3 text-sm"
+                  />
+                </div>
+
+                <div className="mt-auto flex flex-wrap gap-2">
+                  <button
+                    onClick={async () => {
+                      const caption = (captionDrafts[queuePreviewVideo.id] ?? '').trim();
+                      if (caption.length >= 3) {
+                        await handleQueuePreviewSave({ ai_caption: caption, publish_time: queuePreviewVideo.publish_time });
+                      }
+                    }}
+                    disabled={actionState[`video-update-${queuePreviewVideo.id}`]}
+                    className="btn-primary flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold"
+                  >
+                    <CircleCheck className="h-4 w-4" />
+                    Lưu thay đổi
+                  </button>
+
+                  {queuePreviewVideo.status === 'failed' && (
+                    <button
+                      onClick={() => handleRetryVideo(queuePreviewVideo.id)}
+                      disabled={actionState[`video-retry-${queuePreviewVideo.id}`]}
+                      className="btn-secondary flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Thử lại tải
+                    </button>
+                  )}
+
+                  {queuePreviewVideo.status === 'ready' && (
+                    <button
+                      onClick={async () => {
+                        await handleQueuePreviewPublish(queuePreviewVideo.id);
+                      }}
+                      disabled={actionState[`video-publish-${queuePreviewVideo.id}`]}
+                      className="btn-primary flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold"
+                    >
+                      <Send className="h-4 w-4" />
+                      Đăng ngay
+                    </button>
+                  )}
+
+                  {queuePreviewVideo.fb_post_id && (
+                    <a
+                      href={`https://www.facebook.com/watch/?v=${queuePreviewVideo.fb_post_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-ghost flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      Xem trên Facebook
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  );
+    );
+  };
 
   const renderEngagementSection = () => (
     <div className="space-y-6">

@@ -12,6 +12,7 @@ from app.core.time import utc_now
 from app.models.models import Campaign, Video, VideoStatus, VideoMetricsSnapshot
 from app.services.campaign_jobs import publish_video_job
 from app.services.task_queue import TASK_TYPE_VIDEO_PUBLISH, enqueue_task
+from app.services.ai_generator import generate_caption_for_video_job
 
 router = APIRouter(prefix="/videos", tags=["Video Queue"])
 
@@ -335,3 +336,104 @@ def get_video_metrics_history(video_id: str, db: Session = Depends(get_db)):
             for s in snapshots
         ],
     }
+
+
+@router.post("/{video_id}/generate-caption", response_model=dict)
+def generate_caption(video_id: str, db: Session = Depends(get_db)):
+    video_uuid = parse_uuid_or_400(video_id, "Mã video")
+    video = (
+        db.query(Video)
+        .filter(
+            Video.id == video_uuid,
+            Video.is_deleted == False,
+        )
+        .first()
+    )
+
+    if not video:
+        raise HTTPException(status_code=404, detail="Không tìm thấy video")
+
+    if video.status.value != "ready":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Video đang ở trạng thái '{video.status.value}', chỉ video ready mới tạo được caption.",
+        )
+
+    try:
+        result = generate_caption_for_video_job(video_id)
+        if result.get("ok"):
+            return {
+                "message": "Caption đã được tạo thành công",
+                "video_id": str(video.id),
+                "ai_caption": result.get("ai_caption"),
+            }
+        raise HTTPException(
+            status_code=500, detail=result.get("error", "Tạo caption thất bại")
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+class BulkDeleteRequest(BaseModel):
+    video_ids: list[str]
+
+
+@router.post("/bulk-delete", response_model=dict)
+def bulk_delete_videos(request: BulkDeleteRequest, db: Session = Depends(get_db)):
+    deleted_count = 0
+    for raw_id in request.video_ids:
+        video_uuid = parse_uuid_or_400(raw_id, "Mã video")
+        video = (
+            db.query(Video)
+            .filter(
+                Video.id == video_uuid,
+                Video.is_deleted == False,
+            )
+            .first()
+        )
+        if video:
+            video.is_deleted = True
+            video.updated_at = utc_now()
+            deleted_count += 1
+    db.commit()
+    return {"deleted_count": deleted_count}
+
+
+@router.post("/{video_id}/regenerate-caption", response_model=dict)
+def regenerate_caption(video_id: str, db: Session = Depends(get_db)):
+    video_uuid = parse_uuid_or_400(video_id, "Mã video")
+    video = (
+        db.query(Video)
+        .filter(
+            Video.id == video_uuid,
+            Video.is_deleted == False,
+        )
+        .first()
+    )
+
+    if not video:
+        raise HTTPException(status_code=404, detail="Không tìm thấy video")
+
+    if video.status.value not in ("ready", "posted"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Video đang ở trạng thái '{video.status.value}', chỉ video ready/posted mới regenerate được caption.",
+        )
+
+    try:
+        result = generate_caption_for_video_job(video_id)
+        if result.get("ok"):
+            return {
+                "message": "Caption đã được tạo lại thành công",
+                "video_id": str(video.id),
+                "ai_caption": result.get("ai_caption"),
+            }
+        raise HTTPException(
+            status_code=500, detail=result.get("error", "Tạo lại caption thất bại")
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
