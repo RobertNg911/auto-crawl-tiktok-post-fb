@@ -1,20 +1,52 @@
 import { useState, useEffect } from 'react';
-import { X, Play, Pause, Clock, Calendar, Edit3, RefreshCw, Send, ExternalLink } from 'lucide-react';
+import { X, Play, Pause, Clock, Calendar, Edit3, RefreshCw, Send, ExternalLink, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 
-export function VideoPreviewModal({ video, onClose, onSave, onRetry, onRegenerateCaption }) {
+export function VideoPreviewModal({ video, onClose, onSave, onRetry, onRegenerateCaption, onPublish }) {
   const [caption, setCaption] = useState('');
   const [publishTime, setPublishTime] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishProgress, setPublishProgress] = useState(0);
+  const [publishError, setPublishError] = useState(null);
+  const [publishSuccess, setPublishSuccess] = useState(false);
+  const [publishedPostId, setPublishedPostId] = useState(null);
 
   useEffect(() => {
     if (video) {
       setCaption(video.ai_caption || video.original_caption || '');
       setPublishTime(video.publish_time ? video.publish_time.slice(0, 16) : '');
+      setPublishError(null);
+      setPublishSuccess(false);
+      setPublishedPostId(null);
     }
   }, [video]);
 
   if (!video) return null;
+
+  const handlePublish = async () => {
+    setIsPublishing(true);
+    setPublishProgress(0);
+    setPublishError(null);
+    
+    try {
+      for (let i = 0; i <= 100; i += 10) {
+        await new Promise(r => setTimeout(r, 200));
+        setPublishProgress(i);
+      }
+      
+      if (onPublish) {
+        const postId = await onPublish(video.id);
+        setPublishedPostId(postId);
+      }
+      
+      setPublishSuccess(true);
+    } catch (err) {
+      setPublishError(err.message || 'Đăng video thất bại');
+    } finally {
+      setIsPublishing(false);
+    }
+  };
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -33,6 +65,7 @@ export function VideoPreviewModal({ video, onClose, onSave, onRetry, onRegenerat
       ready: { label: 'Sẵn sàng', class: 'border-amber-400/25 bg-amber-400/10 text-amber-100' },
       posted: { label: 'Đã đăng', class: 'border-emerald-400/25 bg-emerald-400/10 text-emerald-100' },
       failed: { label: 'Thất bại', class: 'border-rose-400/25 bg-rose-400/10 text-rose-100' },
+      publishing: { label: 'Đang đăng...', class: 'border-amber-400/25 bg-amber-400/10 text-amber-100 animate-pulse' },
     };
     const status = statusMap[video.status] || statusMap.pending;
     return (
@@ -136,11 +169,57 @@ export function VideoPreviewModal({ video, onClose, onSave, onRetry, onRegenerat
                 </button>
               )}
               
-              {video.status === 'ready' && (
-                <button className="btn-primary flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold">
-                  <Send className="h-4 w-4" />
-                  Đăng ngay
+              {(video.status === 'ready' || video.status === 'publishing') && !publishSuccess && (
+                <button
+                  onClick={handlePublish}
+                  disabled={isPublishing}
+                  className="btn-primary flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold"
+                >
+                  {isPublishing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Đang đăng... {Math.round(publishProgress)}%
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4" />
+                      Đăng ngay
+                    </>
+                  )}
                 </button>
+              )}
+
+              {isPublishing && (
+                <div className="flex flex-1 items-center gap-2 rounded-2xl bg-white/5 p-2">
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+                    <div 
+                      className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-emerald-500 transition-all duration-300"
+                      style={{ width: `${publishProgress}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-slate-400">{Math.round(publishProgress)}%</span>
+                </div>
+              )}
+
+              {publishSuccess && (
+                <div className="flex w-full flex-col gap-2 rounded-2xl bg-emerald-500/10 p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-emerald-400">
+                    <CheckCircle className="h-4 w-4" />
+                    Đăng thành công!
+                  </div>
+                  {(publishedPostId || video.fb_post_id) && (
+                    <div className="text-xs text-slate-400">
+                      Post ID: <span className="font-mono text-emerald-300">{publishedPostId || video.fb_post_id}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {publishError && (
+                <div className="flex items-center gap-2 rounded-2xl bg-rose-500/10 px-4 py-2.5 text-sm font-medium text-rose-400">
+                  <AlertCircle className="h-4 w-4" />
+                  {publishError}
+                </div>
               )}
 
               {isEditing && (

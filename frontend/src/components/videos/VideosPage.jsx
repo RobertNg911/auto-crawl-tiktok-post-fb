@@ -119,6 +119,24 @@ export function VideosPage() {
     }
   };
 
+  const handlePublishVideo = async (id) => {
+    setVideos((prev) =>
+      prev.map((v) =>
+        v.id === id ? { ...v, status: 'publishing' } : v
+      )
+    );
+    
+    await new Promise((r) => setTimeout(r, 2000));
+    
+    const mockPostId = '1234567890' + Math.floor(Math.random() * 1000000);
+    
+    setVideos((prev) =>
+      prev.map((v) =>
+        v.id === id ? { ...v, status: 'posted', fb_post_id: mockPostId } : v
+      )
+    );
+  };
+
   const statusCounts = useMemo(() => {
     return {
       all: videos.length,
@@ -236,6 +254,7 @@ export function VideosPage() {
             onPreview={setPreviewVideo}
             onRetry={handleRetryVideo}
             onDelete={handleDeleteVideo}
+            onPublish={handlePublishVideo}
           />
         ))}
       </div>
@@ -267,6 +286,7 @@ export function VideosPage() {
               )
             );
           }}
+          onPublish={handlePublishVideo}
         />
       )}
     </div>

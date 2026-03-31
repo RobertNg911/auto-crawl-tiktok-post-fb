@@ -1,7 +1,7 @@
-import { Eye, Heart, MessageCircle, Clock, GripVertical, Play, MoreVertical, RefreshCw, Trash2, Edit } from 'lucide-react';
+import { Eye, Heart, MessageCircle, Clock, GripVertical, Play, MoreVertical, RefreshCw, Trash2, Edit, Send } from 'lucide-react';
 import { useState } from 'react';
 
-export function VideoCard({ video, onPreview, onRetry, onDelete, onEditPriority }) {
+export function VideoCard({ video, onPreview, onRetry, onDelete, onEditPriority, onPublish }) {
   const [showMenu, setShowMenu] = useState(false);
   
   const getStatusBadge = () => {
@@ -11,6 +11,7 @@ export function VideoCard({ video, onPreview, onRetry, onDelete, onEditPriority 
       ready: { label: 'Sẵn sàng', tone: 'amber', class: 'border-amber-400/25 bg-amber-400/10 text-amber-100' },
       posted: { label: 'Đã đăng', tone: 'emerald', class: 'border-emerald-400/25 bg-emerald-400/10 text-emerald-100' },
       failed: { label: 'Thất bại', tone: 'rose', class: 'border-rose-400/25 bg-rose-400/10 text-rose-100' },
+      publishing: { label: 'Đang đăng...', tone: 'amber', class: 'border-amber-400/25 bg-amber-400/10 text-amber-100 animate-pulse' },
     };
     const status = statusMap[video.status] || statusMap.pending;
     return (
@@ -69,6 +70,15 @@ export function VideoCard({ video, onPreview, onRetry, onDelete, onEditPriority 
                     <Play className="h-3.5 w-3.5" />
                     Xem chi tiết
                   </button>
+                  {video.status === 'ready' && (
+                    <button
+                      onClick={() => { onPublish && onPublish(video.id); setShowMenu(false); }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-sm text-emerald-400 hover:bg-white/5 hover:text-emerald-300"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                      Đăng video
+                    </button>
+                  )}
                   {video.status === 'failed' && (
                     <button
                       onClick={() => { onRetry && onRetry(video.id); setShowMenu(false); }}
@@ -107,6 +117,11 @@ export function VideoCard({ video, onPreview, onRetry, onDelete, onEditPriority 
               <div className="flex items-center gap-1 text-xs text-slate-400">
                 <Clock className="h-3.5 w-3.5" />
                 <span>{new Date(video.publish_time).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</span>
+              </div>
+            )}
+            {video.status === 'posted' && video.fb_post_id && (
+              <div className="flex items-center gap-1 text-xs text-emerald-400">
+                <span>Post ID: {video.fb_post_id}</span>
               </div>
             )}
           </div>
