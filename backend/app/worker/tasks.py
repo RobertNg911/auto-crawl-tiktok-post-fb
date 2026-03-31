@@ -4,7 +4,13 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.services.campaign_jobs import reply_to_comment_job, reply_to_message_job, retry_video_download, sync_campaign_content
+from app.services.campaign_jobs import (
+    reply_to_comment_job,
+    reply_to_message_job,
+    retry_video_download,
+    sync_campaign_content,
+    publish_video_job,
+)
 from app.services.observability import record_event, update_worker_heartbeat
 from app.services.task_queue import (
     TASK_TYPE_CAMPAIGN_SYNC,
@@ -29,8 +35,12 @@ def _run_task(task) -> dict:
         )
     if task.task_type == TASK_TYPE_VIDEO_RETRY:
         return retry_video_download(payload.get("video_id", task.entity_id or ""))
+    if task.task_type == TASK_TYPE_VIDEO_PUBLISH:
+        return publish_video_job(payload.get("video_id", task.entity_id or ""))
     if task.task_type == TASK_TYPE_COMMENT_REPLY:
-        return reply_to_comment_job(payload.get("interaction_log_id", task.entity_id or ""))
+        return reply_to_comment_job(
+            payload.get("interaction_log_id", task.entity_id or "")
+        )
     if task.task_type == TASK_TYPE_MESSAGE_REPLY:
         return reply_to_message_job(payload.get("message_log_id", task.entity_id or ""))
     raise ValueError(f"Loại tác vụ không được hỗ trợ: {task.task_type}")
@@ -51,7 +61,11 @@ def process_task_queue(worker_name: str) -> int:
                 status="processing",
                 current_task_id=str(task.id),
                 current_task_type=task.task_type,
-                details={"attempts": task.attempts, "entity_type": task.entity_type, "entity_id": task.entity_id},
+                details={
+                    "attempts": task.attempts,
+                    "entity_type": task.entity_type,
+                    "entity_id": task.entity_id,
+                },
                 db=db,
             )
             record_event(
@@ -59,7 +73,11 @@ def process_task_queue(worker_name: str) -> int:
                 "info",
                 "Bắt đầu xử lý tác vụ nền.",
                 db=db,
-                details={"task_id": str(task.id), "task_type": task.task_type, "worker_name": worker_name},
+                details={
+                    "task_id": str(task.id),
+                    "task_type": task.task_type,
+                    "worker_name": worker_name,
+                },
             )
 
             try:
@@ -70,7 +88,11 @@ def process_task_queue(worker_name: str) -> int:
                     "info",
                     "Đã hoàn tất tác vụ nền.",
                     db=db,
-                    details={"task_id": str(task.id), "task_type": task.task_type, "result": result},
+                    details={
+                        "task_id": str(task.id),
+                        "task_type": task.task_type,
+                        "result": result,
+                    },
                 )
             except Exception as exc:
                 fail_task(db, task, str(exc))
@@ -79,7 +101,11 @@ def process_task_queue(worker_name: str) -> int:
                     "error",
                     "Tác vụ nền thất bại.",
                     db=db,
-                    details={"task_id": str(task.id), "task_type": task.task_type, "error": str(exc)},
+                    details={
+                        "task_id": str(task.id),
+                        "task_type": task.task_type,
+                        "error": str(exc),
+                    },
                 )
             processed += 1
 

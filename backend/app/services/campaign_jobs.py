@@ -21,7 +21,11 @@ from app.models.models import (
     Video,
     VideoStatus,
 )
-from app.services.ai_generator import generate_message_reply_with_context, generate_reply
+from app.services.ai_generator import (
+    generate_message_reply_with_context,
+    generate_reply,
+)
+from app.services.facebook_publisher import cleanup_video_file, upload_video_with_retry
 from app.services.fb_graph import reply_to_comment, send_page_message
 from app.services.inbox_memory import (
     apply_conversation_ai_state,
@@ -57,7 +61,12 @@ def mark_video_failed(video: Video, message: str):
     video.retry_count = (video.retry_count or 0) + 1
 
 
-def set_campaign_sync_state(campaign: Campaign, status: str, error: str | None = None, finished_at: datetime | None = None):
+def set_campaign_sync_state(
+    campaign: Campaign,
+    status: str,
+    error: str | None = None,
+    finished_at: datetime | None = None,
+):
     campaign.last_sync_status = status
     campaign.last_sync_error = error[:1000] if error else None
     if finished_at:
@@ -87,7 +96,9 @@ def build_download_prefix(source_platform: str | None) -> str:
     return "video"
 
 
-def build_source_page_publish_time(db: Session, page_id: str | None, schedule_interval: int):
+def build_source_page_publish_time(
+    db: Session, page_id: str | None, schedule_interval: int
+):
     now = utc_now()
     start_time = now
 
@@ -119,7 +130,9 @@ def retry_video_download(video_id: str) -> dict:
         if not video:
             raise ValueError("Không tìm thấy video cần thử lại.")
 
-        out_path, _ = download_video(video.source_video_url, build_download_prefix(video.source_platform))
+        out_path, _ = download_video(
+            video.source_video_url, build_download_prefix(video.source_platform)
+        )
         if out_path:
             safe_remove_file(video.file_path)
             video.file_path = out_path
@@ -215,7 +228,9 @@ def sync_campaign_content(
             )
         )
         if not entries:
-            raise ValueError("Nguồn nội dung không trả về video hợp lệ để đưa vào hàng chờ.")
+            raise ValueError(
+                "Nguồn nội dung không trả về video hợp lệ để đưa vào hàng chờ."
+            )
 
         start_time = build_source_page_publish_time(
             db,
@@ -239,13 +254,17 @@ def sync_campaign_content(
             original_id = entry.original_id
             existing_vid = (
                 db.query(Video)
-                .filter(Video.campaign_id == campaign_uuid, Video.original_id == original_id)
+                .filter(
+                    Video.campaign_id == campaign_uuid, Video.original_id == original_id
+                )
                 .first()
             )
             if existing_vid:
                 continue
 
-            publish_time = start_time + timedelta(minutes=added_count * (campaign.schedule_interval or 0))
+            publish_time = start_time + timedelta(
+                minutes=added_count * (campaign.schedule_interval or 0)
+            )
 
             db_video = Video(
                 campaign_id=campaign_uuid,
@@ -262,7 +281,9 @@ def sync_campaign_content(
             db.refresh(db_video)
             added_count += 1
 
-            out_path, _ = download_video(video_url, build_download_prefix(entry.source_platform))
+            out_path, _ = download_video(
+                video_url, build_download_prefix(entry.source_platform)
+            )
             if out_path:
                 db_video.file_path = out_path
                 db_video.status = VideoStatus.ready
@@ -274,7 +295,9 @@ def sync_campaign_content(
         campaign = db.query(Campaign).filter(Campaign.id == campaign_uuid).first()
         if campaign:
             if interrupted_reason:
-                set_campaign_sync_state(campaign, "failed", interrupted_reason, utc_now())
+                set_campaign_sync_state(
+                    campaign, "failed", interrupted_reason, utc_now()
+                )
                 record_event(
                     "campaign",
                     "warning",
@@ -293,7 +316,11 @@ def sync_campaign_content(
                 )
             db.commit()
 
-        return {"ok": interrupted_reason is None, "campaign_id": campaign_id, "videos_added": added_count}
+        return {
+            "ok": interrupted_reason is None,
+            "campaign_id": campaign_id,
+            "videos_added": added_count,
+        }
     except Exception as exc:
         campaign_uuid = parse_uuid_or_none(campaign_id)
         if campaign_uuid:
@@ -324,7 +351,9 @@ def reply_to_comment_job(interaction_log_id: str) -> dict:
         if not log:
             raise ValueError("Không tìm thấy bình luận cần phản hồi.")
 
-        page_config = db.query(FacebookPage).filter(FacebookPage.page_id == log.page_id).first()
+        page_config = (
+            db.query(FacebookPage).filter(FacebookPage.page_id == log.page_id).first()
+        )
         if not page_config or not page_config.long_lived_access_token:
             log.status = InteractionStatus.failed
             log.ai_reply = "Trang Facebook chưa có mã truy cập hợp lệ."
@@ -362,11 +391,18 @@ def reply_to_comment_job(interaction_log_id: str) -> dict:
                 "warning",
                 "Phản hồi bình luận không thành công.",
                 db=db,
-                details={"comment_id": log.comment_id, "page_id": log.page_id, "response": res},
+                details={
+                    "comment_id": log.comment_id,
+                    "page_id": log.page_id,
+                    "response": res,
+                },
             )
 
         db.commit()
-        return {"ok": log.status == InteractionStatus.replied, "log_id": interaction_log_id}
+        return {
+            "ok": log.status == InteractionStatus.replied,
+            "log_id": interaction_log_id,
+        }
     except Exception as exc:
         record_event(
             "webhook",
@@ -393,7 +429,11 @@ def reply_to_message_job(message_log_id: str) -> dict:
 
         conversation = None
         if log.conversation_id:
-            conversation = db.query(InboxConversation).filter(InboxConversation.id == log.conversation_id).first()
+            conversation = (
+                db.query(InboxConversation)
+                .filter(InboxConversation.id == log.conversation_id)
+                .first()
+            )
         if not conversation:
             conversation = get_or_create_inbox_conversation(
                 db,
@@ -405,14 +445,19 @@ def reply_to_message_job(message_log_id: str) -> dict:
             db.commit()
             db.refresh(log)
 
-        if conversation.status != ConversationStatus.ai_active or conversation.needs_human_handoff:
+        if (
+            conversation.status != ConversationStatus.ai_active
+            or conversation.needs_human_handoff
+        ):
             log.status = InteractionStatus.ignored
             log.ai_reply = "Cuộc trò chuyện này đang được chuyển cho nhân viên hỗ trợ."
             log.last_error = None
             db.commit()
             return {"ok": False, "ignored": True, "log_id": message_log_id}
 
-        page_config = db.query(FacebookPage).filter(FacebookPage.page_id == log.page_id).first()
+        page_config = (
+            db.query(FacebookPage).filter(FacebookPage.page_id == log.page_id).first()
+        )
         if not page_config or not page_config.long_lived_access_token:
             log.status = InteractionStatus.failed
             log.ai_reply = "Trang Facebook chưa có mã truy cập hợp lệ."
@@ -473,7 +518,11 @@ def reply_to_message_job(message_log_id: str) -> dict:
                 "info",
                 "Đã phản hồi tin nhắn inbox thành công.",
                 db=db,
-                details={"page_id": log.page_id, "sender_id": log.sender_id, "message_id": log.facebook_message_id},
+                details={
+                    "page_id": log.page_id,
+                    "sender_id": log.sender_id,
+                    "message_id": log.facebook_message_id,
+                },
             )
         else:
             log.status = InteractionStatus.failed
@@ -502,6 +551,113 @@ def reply_to_message_job(message_log_id: str) -> dict:
             "Tiến trình phản hồi tin nhắn inbox gặp lỗi.",
             db=db,
             details={"log_id": message_log_id, "error": str(exc)},
+        )
+        raise
+    finally:
+        db.close()
+
+
+def publish_video_job(video_id: str) -> dict:
+    db: Session = SessionLocal()
+    video = None
+    try:
+        video_uuid = parse_uuid_or_none(video_id)
+        if not video_uuid:
+            raise ValueError("Mã video không hợp lệ.")
+
+        video = db.query(Video).filter(Video.id == video_uuid).first()
+        if not video:
+            raise ValueError("Không tìm thấy video cần đăng.")
+
+        if not video.file_path:
+            raise ValueError("Video chưa có file để đăng.")
+
+        if video.status == VideoStatus.posted:
+            return {
+                "ok": True,
+                "video_id": str(video.id),
+                "fb_post_id": video.fb_post_id,
+                "skipped": True,
+            }
+
+        campaign = video.campaign
+        if not campaign or not campaign.target_page_id:
+            raise ValueError("Chiến dịch chưa có fanpage đích.")
+
+        page_config = (
+            db.query(FacebookPage)
+            .filter(FacebookPage.page_id == campaign.target_page_id)
+            .first()
+        )
+        if not page_config or not page_config.long_lived_access_token:
+            raise ValueError("Fanpage chưa có mã truy cập hợp lệ.")
+
+        access_token = decrypt_secret(page_config.long_lived_access_token)
+        caption = video.ai_caption or video.original_caption or ""
+        post_id, error_msg = upload_video_with_retry(
+            campaign.target_page_id,
+            video.file_path,
+            caption,
+            access_token,
+            max_retries=3,
+        )
+
+        if post_id:
+            video.fb_post_id = post_id
+            video.status = VideoStatus.posted
+            video.last_error = None
+            db.commit()
+
+            cleanup_video_file(video.file_path)
+            video.file_path = None
+            db.commit()
+
+            record_event(
+                "video",
+                "info",
+                "Đã đăng video lên Facebook thành công.",
+                db=db,
+                details={
+                    "video_id": str(video.id),
+                    "campaign_id": str(campaign.id),
+                    "page_id": campaign.target_page_id,
+                    "fb_post_id": post_id,
+                },
+            )
+            return {"ok": True, "video_id": str(video.id), "fb_post_id": post_id}
+
+        video.status = VideoStatus.failed
+        video.last_error = error_msg or "Đăng video thất bại."
+        video.retry_count = (video.retry_count or 0) + 1
+        db.commit()
+
+        record_event(
+            "video",
+            "error",
+            "Đăng video lên Facebook thất bại.",
+            db=db,
+            details={
+                "video_id": str(video.id),
+                "campaign_id": str(campaign.id),
+                "page_id": campaign.target_page_id,
+                "retry_count": video.retry_count,
+                "error": error_msg,
+            },
+        )
+        return {"ok": False, "video_id": str(video.id), "error": error_msg}
+
+    except Exception as exc:
+        if video:
+            video.status = VideoStatus.failed
+            video.last_error = str(exc)[:1000]
+            video.retry_count = (video.retry_count or 0) + 1
+            db.commit()
+        record_event(
+            "video",
+            "error",
+            "Tiến trình đăng video lên Facebook gặp lỗi.",
+            db=db,
+            details={"video_id": video_id, "error": str(exc)},
         )
         raise
     finally:

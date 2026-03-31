@@ -14,8 +14,11 @@ from app.services.observability import log_structured
 
 TASK_TYPE_CAMPAIGN_SYNC = "campaign_sync"
 TASK_TYPE_VIDEO_RETRY = "video_retry"
+TASK_TYPE_VIDEO_PUBLISH = "video_publish"
 TASK_TYPE_COMMENT_REPLY = "comment_reply"
 TASK_TYPE_MESSAGE_REPLY = "message_reply"
+TASK_TYPE_VIDEO_METRICS_SYNC = "video_metrics_sync"
+TASK_TYPE_CHANNEL_METRICS_SYNC = "channel_metrics_sync"
 
 
 def normalize_task_status(value):
@@ -121,7 +124,9 @@ def recover_stale_processing_tasks(db: Session) -> list[TaskQueue]:
         task.locked_by = None
         task.started_at = None
         task.available_at = now
-        task.last_error = "Tác vụ bị kẹt do worker cũ không hoàn tất. Đã đưa lại vào hàng chờ."
+        task.last_error = (
+            "Tác vụ bị kẹt do worker cũ không hoàn tất. Đã đưa lại vào hàng chờ."
+        )
 
     db.commit()
     for task in stale_tasks:
@@ -186,17 +191,27 @@ def complete_task(db: Session, task: TaskQueue) -> TaskQueue:
     return task
 
 
-def fail_task(db: Session, task: TaskQueue, error_message: str, *, retry_delay_seconds: int | None = None) -> TaskQueue:
+def fail_task(
+    db: Session,
+    task: TaskQueue,
+    error_message: str,
+    *,
+    retry_delay_seconds: int | None = None,
+) -> TaskQueue:
     task.last_error = error_message[:1000]
     task.locked_at = None
     task.locked_by = None
     task.completed_at = None
 
     if (task.attempts or 0) < (task.max_attempts or 1):
-        delay_seconds = retry_delay_seconds if retry_delay_seconds is not None else compute_retry_delay(
-            task.attempts or 1,
-            base_seconds=settings.TASK_RETRY_BASE_SECONDS,
-            max_seconds=settings.TASK_RETRY_MAX_SECONDS,
+        delay_seconds = (
+            retry_delay_seconds
+            if retry_delay_seconds is not None
+            else compute_retry_delay(
+                task.attempts or 1,
+                base_seconds=settings.TASK_RETRY_BASE_SECONDS,
+                max_seconds=settings.TASK_RETRY_MAX_SECONDS,
+            )
         )
         task.status = TaskStatus.queued
         task.available_at = utc_now() + timedelta(seconds=delay_seconds)
@@ -210,7 +225,11 @@ def fail_task(db: Session, task: TaskQueue, error_message: str, *, retry_delay_s
 
 
 def summarize_tasks(db: Session) -> dict[str, int]:
-    rows = db.query(TaskQueue.status, func.count(TaskQueue.id)).group_by(TaskQueue.status).all()
+    rows = (
+        db.query(TaskQueue.status, func.count(TaskQueue.id))
+        .group_by(TaskQueue.status)
+        .all()
+    )
     summary = {status.value: 0 for status in TaskStatus}
     for status, count in rows:
         summary[normalize_task_status(status)] = count
