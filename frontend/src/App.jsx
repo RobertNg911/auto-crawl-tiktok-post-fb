@@ -3,6 +3,7 @@ import { ChannelsPage } from './components/channels/ChannelsPage';
 import { CampaignsPage } from './components/campaigns/CampaignsPage';
 import { VideosPage } from './components/videos/VideosPage';
 import { PagesPage } from './components/pages/PagesPage';
+import { CommentsPage } from './components/comments/CommentsPage';
 import {
   Activity,
   AlertTriangle,
@@ -821,6 +822,7 @@ function App() {
   const [manualReplyDraft, setManualReplyDraft] = useState('');
   const [conversationNoteDraft, setConversationNoteDraft] = useState('');
   const [conversationAssigneeDraft, setConversationAssigneeDraft] = useState('');
+  const [engagementTab, setEngagementTab] = useState('logs');
   const [pendingOperatorComposerId, setPendingOperatorComposerId] = useState(null);
   const manualReplyPanelRef = useRef(null);
   const manualReplyInputRef = useRef(null);
@@ -2469,58 +2471,82 @@ function App() {
 
   const renderEngagementSection = () => (
     <div className="space-y-6">
-      <Panel eyebrow="Luồng bình luận" title="Phản hồi Facebook theo từng tình huống">
-        <div className="grid gap-4 lg:grid-cols-3">
-          <InfoRow label="Bình luận đang chờ" value={systemInfo?.pending_comment_replies ?? 0} emphasis />
-          <InfoRow label="Tổng mục đang hiển thị" value={interactions.length} />
-          <InfoRow label="Trang đã kết nối" value={stats.connected_pages ?? 0} />
+      <div className="flex gap-1 p-1 rounded-xl bg-white/5 w-fit">
+        <button
+          type="button"
+          onClick={() => setEngagementTab('logs')}
+          className={`py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+            engagementTab === 'logs'
+              ? 'bg-cyan-400/20 text-cyan-100'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          Nhật ký bình luận
+        </button>
+        <button
+          type="button"
+          onClick={() => setEngagementTab('config')}
+          className={`py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+            engagementTab === 'config'
+              ? 'bg-cyan-400/20 text-cyan-100'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          Cấu hình theo page
+        </button>
+      </div>
+
+      {engagementTab === 'logs' ? (
+        <CommentsPage token={token} fbPages={fbPages} />
+      ) : (
+        <div className="space-y-4">
+          <Panel eyebrow="Nhật ký tương tác" title="Các bình luận gần nhất (legacy)">
+            {interactions.length === 0 ? (
+              <EmptyState title="Chưa có bình luận nào" description="Bình luận sẽ hiện tại đây." />
+            ) : (
+              <div className="space-y-4">
+                {interactions.map((log) => {
+                  const targetPage = fbPages.find((pageItem) => pageItem.page_id === log.page_id);
+                  const isExpanded = !!expandedItems[`comment:${log.id}`];
+                  return (
+                    <article key={log.id} className="rounded-[22px] border border-white/8 bg-black/10 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                          <div className="font-medium text-white">{targetPage?.page_name || log.page_id}</div>
+                          <div className="mt-1 text-xs text-[var(--text-muted)]">Người dùng: {log.user_id} • Bình luận: {log.comment_id}</div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={cx('inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium', getStatusClasses(log.status))}>
+                            <StatusIcon status={log.status} />
+                            {getStatusLabel(log.status)}
+                          </span>
+                          <StatusPill tone="slate" icon={Clock}>{formatDateTime(log.created_at)}</StatusPill>
+                        </div>
+                      </div>
+                      <div className="mt-3 text-sm text-[var(--text-soft)]">{summarizeText(log.user_message, 'Chưa có bình luận.')}</div>
+                      <div className="mt-3 flex justify-start">
+                        <DetailToggle expanded={isExpanded} onClick={() => toggleExpandedItem(`comment:${log.id}`)} />
+                      </div>
+                      {isExpanded ? (
+                        <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                          <div className="rounded-[24px] border border-white/8 bg-black/10 p-4">
+                            <div className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Tin nhắn người dùng</div>
+                            <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-white">{log.user_message}</div>
+                          </div>
+                          <div className="rounded-[24px] border border-white/8 bg-black/10 p-4">
+                            <div className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Phản hồi AI</div>
+                            <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[var(--text-soft)]">{log.ai_reply || 'AI chưa tạo phản hồi cho mục này.'}</div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </Panel>
         </div>
-      </Panel>
-      <Panel eyebrow="Nhật ký tương tác" title="Các bình luận gần nhất">
-        {interactions.length === 0 ? (
-          <EmptyState title="Chưa có bình luận nào" description="Bình luận sẽ hiện tại đây." />
-        ) : (
-          <div className="space-y-4">
-            {interactions.map((log) => {
-              const targetPage = fbPages.find((pageItem) => pageItem.page_id === log.page_id);
-              const isExpanded = !!expandedItems[`comment:${log.id}`];
-              return (
-                <article key={log.id} className="rounded-[22px] border border-white/8 bg-black/10 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <div className="font-medium text-white">{targetPage?.page_name || log.page_id}</div>
-                      <div className="mt-1 text-xs text-[var(--text-muted)]">Người dùng: {log.user_id} • Bình luận: {log.comment_id}</div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={cx('inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium', getStatusClasses(log.status))}>
-                        <StatusIcon status={log.status} />
-                        {getStatusLabel(log.status)}
-                      </span>
-                      <StatusPill tone="slate" icon={Clock}>{formatDateTime(log.created_at)}</StatusPill>
-                    </div>
-                  </div>
-                  <div className="mt-3 text-sm text-[var(--text-soft)]">{summarizeText(log.user_message, 'Chưa có bình luận.')}</div>
-                  <div className="mt-3 flex justify-start">
-                    <DetailToggle expanded={isExpanded} onClick={() => toggleExpandedItem(`comment:${log.id}`)} />
-                  </div>
-                  {isExpanded ? (
-                    <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                      <div className="rounded-[24px] border border-white/8 bg-black/10 p-4">
-                        <div className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Tin nhắn người dùng</div>
-                        <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-white">{log.user_message}</div>
-                      </div>
-                      <div className="rounded-[24px] border border-white/8 bg-black/10 p-4">
-                        <div className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Phản hồi AI</div>
-                        <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[var(--text-soft)]">{log.ai_reply || 'AI chưa tạo phản hồi cho mục này.'}</div>
-                      </div>
-                    </div>
-                  ) : null}
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </Panel>
+      )}
     </div>
   );
 

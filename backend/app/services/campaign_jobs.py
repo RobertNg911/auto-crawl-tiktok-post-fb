@@ -24,6 +24,7 @@ from app.models.models import (
 from app.services.ai_generator import (
     generate_message_reply_with_context,
     generate_reply,
+    generate_caption_for_video_job,
 )
 from app.services.facebook_publisher import cleanup_video_file, upload_video_with_retry
 from app.services.fb_graph import reply_to_comment, send_page_message
@@ -146,6 +147,24 @@ def retry_video_download(video_id: str) -> dict:
             video.publish_time = utc_now()
             video.last_error = None
             db.commit()
+
+            try:
+                caption_result = generate_caption_for_video_job(str(video.id))
+                if caption_result.get("ok"):
+                    video.ai_caption = caption_result.get("ai_caption")
+                    db.commit()
+            except Exception as caption_exc:
+                record_event(
+                    "video",
+                    "warning",
+                    "Auto-generate caption sau retry thất bại.",
+                    db=db,
+                    details={
+                        "video_id": str(video.id),
+                        "error": str(caption_exc),
+                    },
+                )
+
             record_event(
                 "video",
                 "info",
@@ -294,6 +313,24 @@ def sync_campaign_content(
                 db_video.file_path = out_path
                 db_video.status = VideoStatus.ready
                 db_video.last_error = None
+                db.commit()
+
+                try:
+                    caption_result = generate_caption_for_video_job(str(db_video.id))
+                    if caption_result.get("ok"):
+                        db_video.ai_caption = caption_result.get("ai_caption")
+                        db.commit()
+                except Exception as caption_exc:
+                    record_event(
+                        "video",
+                        "warning",
+                        "Auto-generate caption thất bại, sẽ retry sau.",
+                        db=db,
+                        details={
+                            "video_id": str(db_video.id),
+                            "error": str(caption_exc),
+                        },
+                    )
             else:
                 mark_video_failed(db_video, "Tải video thất bại.")
             db.commit()
@@ -357,6 +394,14 @@ def reply_to_comment_job(interaction_log_id: str) -> dict:
         if not log:
             raise ValueError("Không tìm thấy bình luận cần phản hồi.")
 
+        if log.status != InteractionStatus.pending:
+            return {
+                "ok": False,
+                "log_id": interaction_log_id,
+                "skipped": True,
+                "reason": "Trạng thái không phải pending",
+            }
+
         page_config = (
             db.query(FacebookPage).filter(FacebookPage.page_id == log.page_id).first()
         )
@@ -370,7 +415,58 @@ def reply_to_comment_job(interaction_log_id: str) -> dict:
             log.status = InteractionStatus.ignored
             log.ai_reply = "Tự động phản hồi bình luận đang tắt cho fanpage này."
             db.commit()
-            return {"ok": False, "log_id": interaction_log_id}
+            return {
+                "ok": False,
+                "log_id": interaction_log_id,
+                "skipped": True,
+                "reason": "Auto-reply disabled",
+            }
+
+        if log.user_id == log.page_id:
+            log.status = InteractionStatus.ignored
+            log.ai_reply = "Bỏ qua bình luận từ chính trang này."
+            db.commit()
+            record_event(
+                "webhook",
+                "info",
+                "Bỏ qua bình luận từ page owner.",
+                db=db,
+                details={"comment_id": log.comment_id, "page_id": log.page_id},
+            )
+            return {
+                "ok": False,
+                "log_id": interaction_log_id,
+                "skipped": True,
+                "reason": "Own comment",
+            }
+
+        from app.services.ai_comment_service import cooldown_manager
+
+        within_cooldown, cooldown_reason = cooldown_manager.is_within_cooldown(
+            db, log.page_id, log.user_id
+        )
+        if not within_cooldown:
+            log.status = InteractionStatus.ignored
+            log.ai_reply = cooldown_reason
+            db.commit()
+            record_event(
+                "webhook",
+                "info",
+                "Bỏ qua bình luận do cooldown.",
+                db=db,
+                details={
+                    "comment_id": log.comment_id,
+                    "page_id": log.page_id,
+                    "sender_id": log.user_id,
+                    "reason": cooldown_reason,
+                },
+            )
+            return {
+                "ok": False,
+                "log_id": interaction_log_id,
+                "skipped": True,
+                "reason": cooldown_reason,
+            }
 
         access_token = decrypt_secret(page_config.long_lived_access_token)
         ai_reply = generate_reply(

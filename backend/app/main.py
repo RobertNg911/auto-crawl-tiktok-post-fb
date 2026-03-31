@@ -18,6 +18,7 @@ from app.api import (
     users,
     webhooks,
     pages,
+    comments,
 )
 from app.api.auth import require_authenticated_user
 from app.core.config import settings
@@ -88,6 +89,7 @@ app.include_router(facebook.router, dependencies=[Depends(require_authenticated_
 app.include_router(system.router, dependencies=[Depends(require_authenticated_user)])
 app.include_router(users.router, dependencies=[Depends(require_authenticated_user)])
 app.include_router(webhooks.router)
+app.include_router(comments.router, dependencies=[Depends(require_authenticated_user)])
 
 os.makedirs(settings.DOWNLOAD_DIR, exist_ok=True)
 app.mount("/downloads", StaticFiles(directory=settings.DOWNLOAD_DIR), name="downloads")
