@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChannelsPage } from './components/channels/ChannelsPage';
 import { CampaignsPage } from './components/campaigns/CampaignsPage';
 import { VideosPage } from './components/videos/VideosPage';
+import { PagesPage } from './components/pages/PagesPage';
 import {
   Activity,
   AlertTriangle,
@@ -126,6 +127,7 @@ const NAV_ITEMS = [
   { id: 'channels', label: 'Kênh TikTok', description: 'Quản lý kênh mục tiêu.', icon: UserPlus },
   { id: 'campaigns', label: 'Chiến dịch', description: 'Nguồn, trang và chiến dịch.', icon: Share2 },
   { id: 'queue', label: 'Lịch đăng', description: 'Video, lịch và caption.', icon: Clock },
+  { id: 'pages', label: 'Fanpage', description: 'Quản lý fanpage và AI.', icon: Globe2 },
   { id: 'engagement', label: 'Tương tác', description: 'Bình luận và phản hồi AI.', icon: Bot },
   { id: 'messages', label: 'Tin nhắn AI', description: 'Prompt và inbox tự động.', icon: MessagesSquare },
   { id: 'operations', label: 'Vận hành', description: 'Worker, queue và log.', icon: Server },
@@ -3279,6 +3281,7 @@ function App() {
       case 'channels': return <ChannelsPage />;
       case 'campaigns': return <CampaignsPage />;
       case 'queue': return <VideosPage />;
+      case 'pages': return <PagesPage fbPages={fbPages} setFbPages={setFbPages} onRefreshDashboard={fetchDashboard} token={token} />;
       case 'engagement': return renderEngagementSection();
       case 'messages': return renderMessagesSection();
       case 'operations': return renderOperationsSection();
