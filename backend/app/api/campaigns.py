@@ -458,6 +458,41 @@ def resume_campaign(campaign_id: str, db: Session = Depends(get_db)):
     return {"message": f"Đã kích hoạt lại chiến dịch '{campaign.name}'."}
 
 
+class CampaignUpdate(BaseModel):
+    name: str | None = None
+    status: str | None = None
+    view_threshold: int | None = None
+    schedule_interval: int | None = None
+
+
+@router.patch("/{campaign_id}")
+def update_campaign(
+    campaign_id: str, payload: CampaignUpdate, db: Session = Depends(get_db)
+):
+    campaign = get_campaign_or_404(db, campaign_id)
+
+    if payload.name is not None:
+        campaign.name = payload.name.strip()
+    if payload.view_threshold is not None:
+        campaign.view_threshold = payload.view_threshold
+    if payload.schedule_interval is not None:
+        campaign.schedule_interval = payload.schedule_interval
+    if payload.status is not None:
+        if payload.status == "active":
+            campaign.status = CampaignStatus.active
+        elif payload.status == "paused":
+            campaign.status = CampaignStatus.paused
+
+    db.commit()
+    db.refresh(campaign)
+    page_name_map = build_page_name_map(db)
+    summary_map = build_campaign_summary_map(db)
+    return {
+        "message": "Đã cập nhật chiến dịch.",
+        "campaign": serialize_campaign(campaign, summary_map, page_name_map),
+    }
+
+
 @router.delete("/{campaign_id}")
 def delete_campaign(campaign_id: str, db: Session = Depends(get_db)):
     campaign = get_campaign_or_404(db, campaign_id)
@@ -736,4 +771,70 @@ def retry_video(video_id: str, db: Session = Depends(get_db)):
     return {
         "message": f"Đã xếp lịch thử tải lại video {video.original_id}.",
         "task_id": str(task.id),
+    }
+
+
+@router.get("/{campaign_id}")
+def get_campaign_detail(campaign_id: str, db: Session = Depends(get_db)):
+    campaign = get_campaign_or_404(db, campaign_id)
+    page_name_map = build_page_name_map(db)
+    summary_map = build_campaign_summary_map(db)
+
+    videos = (
+        db.query(Video)
+        .filter(Video.campaign_id == campaign.id)
+        .order_by(Video.priority.desc(), Video.publish_time.asc())
+        .limit(50)
+        .all()
+    )
+
+    return {
+        "campaign": serialize_campaign(campaign, summary_map, page_name_map),
+        "videos": [serialize_video(video, page_name_map) for video in videos],
+    }
+
+
+@router.get("/{campaign_id}/timeline")
+def get_campaign_timeline(campaign_id: str, db: Session = Depends(get_db)):
+    campaign = get_campaign_or_404(db, campaign_id)
+
+    scheduled_videos = (
+        db.query(Video)
+        .filter(
+            Video.campaign_id == campaign.id,
+            Video.status.in_([VideoStatus.ready, VideoStatus.pending]),
+            Video.publish_time.isnot(None),
+        )
+        .order_by(Video.publish_time.asc())
+        .limit(100)
+        .all()
+    )
+
+    unscheduled_videos = (
+        db.query(Video)
+        .filter(
+            Video.campaign_id == campaign.id,
+            Video.status.in_([VideoStatus.ready, VideoStatus.pending]),
+            Video.publish_time.is_(None),
+        )
+        .order_by(Video.priority.desc())
+        .limit(50)
+        .all()
+    )
+
+    page_name_map = build_page_name_map(db)
+
+    return {
+        "campaign": {
+            "id": str(campaign.id),
+            "name": campaign.name,
+            "schedule_interval": campaign.schedule_interval,
+            "status": normalize_status(campaign.status),
+        },
+        "scheduled_videos": [
+            serialize_video(v, page_name_map) for v in scheduled_videos
+        ],
+        "unscheduled_videos": [
+            serialize_video(v, page_name_map) for v in unscheduled_videos
+        ],
     }

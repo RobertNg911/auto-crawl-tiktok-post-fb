@@ -19,10 +19,11 @@ export function CampaignWizard({ onSubmit, onClose, initialData }) {
     schedule_interval: 7200,
   });
   const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (initialData) {
-      setFormData({ ...formData, ...initialData });
+      setFormData((prev) => ({ ...prev, ...initialData }));
     }
   }, [initialData]);
 
@@ -67,9 +68,13 @@ export function CampaignWizard({ onSubmit, onClose, initialData }) {
     setStep((s) => Math.max(s - 1, 1));
   };
 
-  const handleSubmit = () => {
-    if (validateStep()) {
-      onSubmit(formData);
+  const handleSubmit = async () => {
+    if (!validateStep()) return;
+    setSubmitting(true);
+    try {
+      await onSubmit(formData);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -313,9 +318,10 @@ export function CampaignWizard({ onSubmit, onClose, initialData }) {
           ) : (
             <button
               onClick={handleSubmit}
-              className="btn-primary flex-1 rounded-2xl px-4 py-3 text-sm font-semibold"
+              disabled={submitting}
+              className="btn-primary flex-1 rounded-2xl px-4 py-3 text-sm font-semibold disabled:opacity-50"
             >
-              Tạo chiến dịch
+              {submitting ? 'Đang tạo...' : 'Tạo chiến dịch'}
             </button>
           )}
         </div>

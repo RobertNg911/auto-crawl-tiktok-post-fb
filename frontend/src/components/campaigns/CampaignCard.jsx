@@ -1,7 +1,7 @@
-import { Play, Pause, RefreshCw, Trash2, MoreVertical, Users, Video, Clock, Calendar } from 'lucide-react';
+import { Play, Pause, RefreshCw, Trash2, MoreVertical, Users, Video, Clock, Calendar, Eye } from 'lucide-react';
 import { useState } from 'react';
 
-export function CampaignCard({ campaign, onEdit, onDelete, onToggleStatus, onSync, onViewTimeline }) {
+export function CampaignCard({ campaign, onEdit, onDelete, onToggleStatus, onSync, onViewTimeline, onViewDetail }) {
   const [showActions, setShowActions] = useState(false);
   const isActive = campaign.status === 'active';
   
@@ -30,7 +30,7 @@ export function CampaignCard({ campaign, onEdit, onDelete, onToggleStatus, onSyn
   return (
     <div className="group relative overflow-hidden rounded-[22px] border border-white/8 bg-black/10 p-4 transition hover:border-white/16 hover:bg-black/15">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 cursor-pointer" onClick={onViewDetail}>
           <div className="flex items-center gap-2">
             <h3 className="font-display text-base font-semibold text-white truncate">
               {campaign.name}
@@ -62,7 +62,17 @@ export function CampaignCard({ campaign, onEdit, onDelete, onToggleStatus, onSyn
           </button>
           
           {showActions && (
-            <div className="absolute right-0 top-full z-10 mt-1 w-40 rounded-xl border border-white/12 bg-[var(--panel-bg)] py-1 shadow-xl">
+            <div className="absolute right-0 top-full z-10 mt-1 w-44 rounded-xl border border-white/12 bg-[var(--panel-bg)] py-1 shadow-xl">
+              <button
+                onClick={() => {
+                  onViewDetail && onViewDetail();
+                  setShowActions(false);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
+              >
+                <Eye className="h-3.5 w-3.5" />
+                Xem chi tiết
+              </button>
               <button
                 onClick={() => {
                   onEdit && onEdit(campaign);
