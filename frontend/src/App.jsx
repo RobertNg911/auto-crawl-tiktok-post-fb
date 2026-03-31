@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChannelsPage } from './components/channels/ChannelsPage';
+import { CampaignsPage } from './components/campaigns/CampaignsPage';
+import { VideosPage } from './components/videos/VideosPage';
 import {
   Activity,
   AlertTriangle,
@@ -3275,8 +3277,8 @@ function App() {
   const renderActiveSection = () => {
     switch (activeSection) {
       case 'channels': return <ChannelsPage />;
-      case 'campaigns': return renderCampaignSection();
-      case 'queue': return renderQueueSection();
+      case 'campaigns': return <CampaignsPage />;
+      case 'queue': return <VideosPage />;
       case 'engagement': return renderEngagementSection();
       case 'messages': return renderMessagesSection();
       case 'operations': return renderOperationsSection();

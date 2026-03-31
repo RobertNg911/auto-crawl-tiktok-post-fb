@@ -3,11 +3,26 @@ from pathlib import Path
 import tempfile
 import uuid
 
+os.environ["APP_TIMEZONE"] = "UTC"
+
+import zoneinfo
+
+try:
+    zoneinfo.ZoneInfo("UTC")
+except Exception:
+    import sys
+    from importlib import reload
+
+    if "zoneinfo" in sys.modules:
+        reload(sys.modules["zoneinfo"])
+
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 import pytest
 
-TEST_DB_PATH = Path(tempfile.gettempdir()) / f"social_tool_test_suite_{uuid.uuid4().hex}.db"
+TEST_DB_PATH = (
+    Path(tempfile.gettempdir()) / f"social_tool_test_suite_{uuid.uuid4().hex}.db"
+)
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH.as_posix()}"
 os.environ["JWT_SECRET"] = "test-jwt-secret"
 os.environ["TOKEN_ENCRYPTION_SECRET"] = "test-token-secret"
@@ -19,8 +34,9 @@ os.environ["PASSWORD_MIN_LENGTH"] = "8"
 os.environ["SCHEDULER_ENABLED"] = "false"
 os.environ["BACKGROUND_JOBS_MODE"] = "dedicated-worker"
 os.environ["APP_ROLE"] = "api"
+os.environ["APP_TIMEZONE"] = "UTC"
 
-from app.api import auth, campaigns, facebook, system, users, webhooks
+from app.api import auth, campaigns, channels, videos, facebook, system, users
 from app.api.auth import require_authenticated_user
 from app.core.database import Base, SessionLocal, engine
 from app.services.accounts import ensure_default_admin
@@ -70,11 +86,22 @@ def db_session():
 def client():
     app = FastAPI()
     app.include_router(auth.router)
-    app.include_router(campaigns.router, dependencies=[Depends(require_authenticated_user)])
-    app.include_router(facebook.router, dependencies=[Depends(require_authenticated_user)])
-    app.include_router(system.router, dependencies=[Depends(require_authenticated_user)])
+    app.include_router(
+        channels.router, dependencies=[Depends(require_authenticated_user)]
+    )
+    app.include_router(
+        videos.router, dependencies=[Depends(require_authenticated_user)]
+    )
+    app.include_router(
+        campaigns.router, dependencies=[Depends(require_authenticated_user)]
+    )
+    app.include_router(
+        facebook.router, dependencies=[Depends(require_authenticated_user)]
+    )
+    app.include_router(
+        system.router, dependencies=[Depends(require_authenticated_user)]
+    )
     app.include_router(users.router, dependencies=[Depends(require_authenticated_user)])
-    app.include_router(webhooks.router)
     with TestClient(app) as test_client:
         yield test_client
 

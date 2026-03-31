@@ -1,7 +1,18 @@
 import enum
 import uuid
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, UniqueConstraint, Uuid
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    Uuid,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
@@ -14,6 +25,11 @@ JSON_TYPE = JSON().with_variant(JSONB, "postgresql")
 class CampaignStatus(str, enum.Enum):
     active = "active"
     paused = "paused"
+
+
+class ChannelStatus(str, enum.Enum):
+    active = "active"
+    inactive = "inactive"
 
 
 class VideoStatus(str, enum.Enum):
@@ -49,11 +65,31 @@ class UserRole(str, enum.Enum):
     operator = "operator"
 
 
+class TargetChannel(Base):
+    __tablename__ = "target_channels"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    channel_id = Column(String(255), unique=True, nullable=False, index=True)
+    username = Column(String(100), nullable=False, index=True)
+    display_name = Column(String(255), nullable=True)
+    topic = Column(String(100), nullable=True)
+    status = Column(Enum(ChannelStatus), default=ChannelStatus.active, nullable=False)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+    metrics_snapshots = relationship(
+        "ChannelMetricsSnapshot", back_populates="channel", cascade="all, delete-orphan"
+    )
+
+
 class Campaign(Base):
     __tablename__ = "campaigns"
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, index=True)
+    topic = Column(String(100), nullable=True, index=True)
+    view_threshold = Column(Integer, default=0, nullable=False)
     source_url = Column(String)
     source_platform = Column(String, nullable=True, index=True)
     source_kind = Column(String, nullable=True)
@@ -73,7 +109,9 @@ class Campaign(Base):
 class Video(Base):
     __tablename__ = "videos"
     __table_args__ = (
-        UniqueConstraint("campaign_id", "original_id", name="uq_videos_campaign_original"),
+        UniqueConstraint(
+            "campaign_id", "original_id", name="uq_videos_campaign_original"
+        ),
     )
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -85,15 +123,25 @@ class Video(Base):
     file_path = Column(String, nullable=True)
     original_caption = Column(String, nullable=True)
     ai_caption = Column(String, nullable=True)
+    thumbnail_url = Column(String, nullable=True)
     status = Column(Enum(VideoStatus), default=VideoStatus.pending)
+    views = Column(Integer, default=0)
+    likes = Column(Integer, default=0)
+    comments_count = Column(Integer, default=0)
+    priority = Column(Integer, default=0)
     publish_time = Column(DateTime, nullable=True)
     fb_post_id = Column(String, nullable=True)
     last_error = Column(String, nullable=True)
     retry_count = Column(Integer, default=0)
+    is_deleted = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     campaign = relationship("Campaign", back_populates="videos")
+
+    metrics_snapshots = relationship(
+        "VideoMetricsSnapshot", back_populates="video", cascade="all, delete-orphan"
+    )
 
 
 class FacebookPage(Base):
@@ -103,14 +151,19 @@ class FacebookPage(Base):
     page_id = Column(String, unique=True, index=True)
     page_name = Column(String)
     long_lived_access_token = Column(String)
-    comment_auto_reply_enabled = Column(Boolean, default=True, nullable=False)
+    auto_post = Column(Boolean, default=True, nullable=False)
+    auto_comment = Column(Boolean, default=False, nullable=False)
+    auto_inbox = Column(Boolean, default=False, nullable=False)
+    caption_prompt = Column(String, nullable=True)
     comment_ai_prompt = Column(String, nullable=True)
-    message_auto_reply_enabled = Column(Boolean, default=False, nullable=False)
     message_ai_prompt = Column(String, nullable=True)
+    comment_auto_reply_enabled = Column(Boolean, default=True, nullable=False)
+    message_auto_reply_enabled = Column(Boolean, default=False, nullable=False)
     message_reply_schedule_enabled = Column(Boolean, default=False, nullable=False)
     message_reply_start_time = Column(String, default="08:00", nullable=False)
     message_reply_end_time = Column(String, default="22:00", nullable=False)
     message_reply_cooldown_minutes = Column(Integer, default=0, nullable=False)
+    is_deleted = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
@@ -118,20 +171,29 @@ class FacebookPage(Base):
 class InboxConversation(Base):
     __tablename__ = "inbox_conversations"
     __table_args__ = (
-        UniqueConstraint("page_id", "sender_id", name="uq_inbox_conversations_page_sender"),
+        UniqueConstraint(
+            "page_id", "sender_id", name="uq_inbox_conversations_page_sender"
+        ),
     )
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     page_id = Column(String, ForeignKey("facebook_pages.page_id"), index=True)
     sender_id = Column(String, index=True, nullable=False)
     recipient_id = Column(String, nullable=True)
-    status = Column(Enum(ConversationStatus), default=ConversationStatus.ai_active, nullable=False, index=True)
+    status = Column(
+        Enum(ConversationStatus),
+        default=ConversationStatus.ai_active,
+        nullable=False,
+        index=True,
+    )
     conversation_summary = Column(String, nullable=True)
     current_intent = Column(String, nullable=True)
     customer_facts = Column(JSON_TYPE, nullable=True)
     needs_human_handoff = Column(Boolean, default=False, nullable=False)
     handoff_reason = Column(String, nullable=True)
-    assigned_to_user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    assigned_to_user_id = Column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
     internal_note = Column(String, nullable=True)
     latest_customer_message_id = Column(String, nullable=True)
     latest_reply_message_id = Column(String, nullable=True)
@@ -163,7 +225,12 @@ class InboxMessageLog(Base):
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     page_id = Column(String, ForeignKey("facebook_pages.page_id"), index=True)
-    conversation_id = Column(Uuid(as_uuid=True), ForeignKey("inbox_conversations.id"), nullable=True, index=True)
+    conversation_id = Column(
+        Uuid(as_uuid=True),
+        ForeignKey("inbox_conversations.id"),
+        nullable=True,
+        index=True,
+    )
     facebook_message_id = Column(String, unique=True, index=True)
     sender_id = Column(String, index=True)
     recipient_id = Column(String, nullable=True)
@@ -171,7 +238,9 @@ class InboxMessageLog(Base):
     ai_reply = Column(String, nullable=True)
     facebook_reply_message_id = Column(String, nullable=True)
     reply_source = Column(String, nullable=True)
-    reply_author_user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    reply_author_user_id = Column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
     status = Column(Enum(InteractionStatus), default=InteractionStatus.pending)
     last_error = Column(String, nullable=True)
     created_at = Column(DateTime, default=utc_now)
@@ -241,6 +310,49 @@ class SystemEvent(Base):
     details = Column(JSON_TYPE, nullable=True)
     actor_user_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=utc_now, index=True)
+
+
+class ChannelMetricsSnapshot(Base):
+    __tablename__ = "channel_metrics_snapshots"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    channel_id = Column(
+        Uuid(as_uuid=True), ForeignKey("target_channels.id"), nullable=False, index=True
+    )
+    followers = Column(Integer, default=0, nullable=False)
+    following = Column(Integer, default=0, nullable=False)
+    likes = Column(Integer, default=0, nullable=False)
+    video_count = Column(Integer, default=0, nullable=False)
+    total_views = Column(Integer, default=0, nullable=False)
+    snapshot_date = Column(DateTime, default=utc_now, nullable=False, index=True)
+    created_at = Column(DateTime, default=utc_now)
+
+    channel = relationship("TargetChannel", back_populates="metrics_snapshots")
+
+    __table_args__ = (
+        UniqueConstraint("channel_id", "snapshot_date", name="uq_channel_metrics_date"),
+    )
+
+
+class VideoMetricsSnapshot(Base):
+    __tablename__ = "video_metrics_snapshots"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    video_id = Column(
+        Uuid(as_uuid=True), ForeignKey("videos.id"), nullable=False, index=True
+    )
+    views = Column(Integer, default=0, nullable=False)
+    likes = Column(Integer, default=0, nullable=False)
+    comments = Column(Integer, default=0, nullable=False)
+    shares = Column(Integer, default=0, nullable=False)
+    snapshot_date = Column(DateTime, default=utc_now, nullable=False, index=True)
+    created_at = Column(DateTime, default=utc_now)
+
+    video = relationship("Video", back_populates="metrics_snapshots")
+
+    __table_args__ = (
+        UniqueConstraint("video_id", "snapshot_date", name="uq_video_metrics_date"),
+    )
 
 
 class RuntimeSetting(Base):

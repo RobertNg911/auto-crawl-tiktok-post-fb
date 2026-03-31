@@ -37,6 +37,12 @@ from app.services.inbox_memory import (
 from app.services.observability import record_event
 from app.services.security import decrypt_secret
 from app.services.source_resolver import SourceResolutionError, resolve_content_source
+from app.services.tiktok_analytics import (
+    extract_channel_metrics,
+    extract_channel_video_list,
+    extract_video_metrics,
+    is_video_older_than_30_days,
+)
 from app.services.ytdlp_crawler import download_video, extract_source_entries
 
 
@@ -658,6 +664,232 @@ def publish_video_job(video_id: str) -> dict:
             "Tiến trình đăng video lên Facebook gặp lỗi.",
             db=db,
             details={"video_id": video_id, "error": str(exc)},
+        )
+        raise
+    finally:
+        db.close()
+
+
+def sync_channel_metrics_for_target_channel(target_channel_id: str) -> dict:
+    """Sync metrics for a single target channel (TargetChannel model)."""
+    from app.models.models import TargetChannel, ChannelMetricsSnapshot
+
+    db: Session = SessionLocal()
+    try:
+        channel_uuid = parse_uuid_or_none(target_channel_id)
+        if not channel_uuid:
+            raise ValueError("Mã kênh mục tiêu không hợp lệ.")
+
+        channel = (
+            db.query(TargetChannel).filter(TargetChannel.id == channel_uuid).first()
+        )
+        if not channel:
+            raise ValueError("Không tìm thấy kênh mục tiêu.")
+
+        if not channel.username:
+            raise ValueError("Kênh mục tiêu không có username.")
+
+        metrics = extract_channel_metrics(channel.username)
+        if not metrics:
+            record_event(
+                "analytics",
+                "warning",
+                "Không lấy được metrics từ kênh TikTok.",
+                db=db,
+                details={"channel_id": target_channel_id, "username": channel.username},
+            )
+            return {
+                "ok": False,
+                "channel_id": target_channel_id,
+                "error": "Không lấy được metrics",
+            }
+
+        snapshot = ChannelMetricsSnapshot(
+            channel_id=channel_uuid,
+            followers=metrics.followers,
+            following=metrics.following,
+            likes=metrics.likes,
+            video_count=metrics.video_count,
+            total_views=metrics.total_views,
+            snapshot_date=utc_now(),
+        )
+        db.add(snapshot)
+        db.commit()
+
+        record_event(
+            "analytics",
+            "info",
+            "Đã cập nhật metrics cho kênh mục tiêu.",
+            db=db,
+            details={
+                "channel_id": target_channel_id,
+                "username": channel.username,
+                "followers": metrics.followers,
+                "video_count": metrics.video_count,
+            },
+        )
+        return {
+            "ok": True,
+            "channel_id": target_channel_id,
+            "followers": metrics.followers,
+        }
+
+    except Exception as exc:
+        record_event(
+            "analytics",
+            "error",
+            "Tiến trình đồng bộ metrics kênh gặp lỗi.",
+            db=db,
+            details={"channel_id": target_channel_id, "error": str(exc)},
+        )
+        raise
+    finally:
+        db.close()
+
+
+def sync_video_metrics_for_campaign(campaign_id: str) -> dict:
+    """Sync video-level metrics for all videos in a campaign.
+    Auto-discovers new videos from channels and skips videos older than 30 days.
+    """
+    from app.models.models import TargetChannel, Video, VideoMetricsSnapshot
+
+    db: Session = SessionLocal()
+    try:
+        campaign_uuid = parse_uuid_or_none(campaign_id)
+        if not campaign_uuid:
+            raise ValueError("Mã chiến dịch không hợp lệ.")
+
+        campaign = db.query(Campaign).filter(Campaign.id == campaign_uuid).first()
+        if not campaign:
+            raise ValueError("Không tìm thấy chiến dịch.")
+
+        if not campaign.source_url or not campaign.source_platform == "tiktok":
+            return {
+                "ok": True,
+                "campaign_id": campaign_id,
+                "new_videos": 0,
+                "metrics_updated": 0,
+            }
+
+        import re
+
+        match = re.match(
+            r"https://(?:www\.)?tiktok\.com/@([^/?]+)", campaign.source_url
+        )
+        if not match:
+            return {
+                "ok": True,
+                "campaign_id": campaign_id,
+                "new_videos": 0,
+                "metrics_updated": 0,
+            }
+
+        username = match.group(1)
+
+        discovered_videos = extract_channel_video_list(username, limit=100)
+
+        videos_updated = 0
+        new_videos_created = 0
+        threshold = campaign.view_threshold or 0
+
+        for entry in discovered_videos:
+            if is_video_older_than_30_days(entry.upload_date):
+                continue
+
+            existing_video = (
+                db.query(Video)
+                .filter(
+                    Video.campaign_id == campaign_uuid,
+                    Video.original_id == entry.original_id,
+                )
+                .first()
+            )
+
+            if existing_video:
+                video_metrics = extract_video_metrics(entry.source_video_url)
+                if video_metrics:
+                    existing_video.views = video_metrics.views
+                    existing_video.likes = video_metrics.likes
+                    existing_video.comments_count = video_metrics.comments
+                    if existing_video.thumbnail_url is None and entry.thumbnail_url:
+                        existing_video.thumbnail_url = entry.thumbnail_url
+
+                    snapshot = VideoMetricsSnapshot(
+                        video_id=existing_video.id,
+                        views=video_metrics.views,
+                        likes=video_metrics.likes,
+                        comments=video_metrics.comments,
+                        shares=video_metrics.shares,
+                        snapshot_date=utc_now(),
+                    )
+                    db.add(snapshot)
+                    videos_updated += 1
+            else:
+                if threshold > 0:
+                    video_metrics = extract_video_metrics(entry.source_video_url)
+                    if not video_metrics or video_metrics.views < threshold:
+                        continue
+                    views = video_metrics.views
+                else:
+                    views = 0
+
+                new_video = Video(
+                    campaign_id=campaign_uuid,
+                    original_id=entry.original_id,
+                    source_platform="tiktok",
+                    source_kind="tiktok_video",
+                    source_video_url=entry.source_video_url,
+                    thumbnail_url=entry.thumbnail_url,
+                    original_caption=entry.title,
+                    status=VideoStatus.pending,
+                    views=views,
+                )
+                db.add(new_video)
+                db.commit()
+                db.refresh(new_video)
+                new_videos_created += 1
+
+                if threshold == 0 or views >= threshold:
+                    video_metrics = extract_video_metrics(entry.source_video_url)
+                    if video_metrics:
+                        snapshot = VideoMetricsSnapshot(
+                            video_id=new_video.id,
+                            views=video_metrics.views,
+                            likes=video_metrics.likes,
+                            comments=video_metrics.comments,
+                            shares=video_metrics.shares,
+                            snapshot_date=utc_now(),
+                        )
+                        db.add(snapshot)
+
+        db.commit()
+
+        record_event(
+            "analytics",
+            "info",
+            "Đã đồng bộ metrics video cho chiến dịch.",
+            db=db,
+            details={
+                "campaign_id": campaign_id,
+                "username": username,
+                "new_videos": new_videos_created,
+                "metrics_updated": videos_updated,
+            },
+        )
+        return {
+            "ok": True,
+            "campaign_id": campaign_id,
+            "new_videos": new_videos_created,
+            "metrics_updated": videos_updated,
+        }
+
+    except Exception as exc:
+        record_event(
+            "analytics",
+            "error",
+            "Tiến trình đồng bộ metrics video gặp lỗi.",
+            db=db,
+            details={"campaign_id": campaign_id, "error": str(exc)},
         )
         raise
     finally:

@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
-from app.api import auth, campaigns, facebook, system, users, webhooks
+from app.api import auth, campaigns, channels, videos, facebook, system, users, webhooks
 from app.api.auth import require_authenticated_user
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
@@ -51,17 +51,27 @@ async def lifespan(app: FastAPI):
         "system",
         "info",
         "Ứng dụng API đã khởi động.",
-        details={"app_role": settings.APP_ROLE, "scheduler_enabled": settings.SCHEDULER_ENABLED},
+        details={
+            "app_role": settings.APP_ROLE,
+            "scheduler_enabled": settings.SCHEDULER_ENABLED,
+        },
     )
     if settings.SCHEDULER_ENABLED:
         start_scheduler()
     yield
-    record_event("system", "warning", "Ứng dụng API đã dừng.", details={"app_role": settings.APP_ROLE})
+    record_event(
+        "system",
+        "warning",
+        "Ứng dụng API đã dừng.",
+        details={"app_role": settings.APP_ROLE},
+    )
 
 
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
 
 app.include_router(auth.router)
+app.include_router(channels.router, dependencies=[Depends(require_authenticated_user)])
+app.include_router(videos.router, dependencies=[Depends(require_authenticated_user)])
 app.include_router(campaigns.router, dependencies=[Depends(require_authenticated_user)])
 app.include_router(facebook.router, dependencies=[Depends(require_authenticated_user)])
 app.include_router(system.router, dependencies=[Depends(require_authenticated_user)])

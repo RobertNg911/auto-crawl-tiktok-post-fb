@@ -10,6 +10,8 @@ from app.services.campaign_jobs import (
     retry_video_download,
     sync_campaign_content,
     publish_video_job,
+    sync_channel_metrics_for_target_channel,
+    sync_video_metrics_for_campaign,
 )
 from app.services.observability import record_event, update_worker_heartbeat
 from app.services.task_queue import (
@@ -17,6 +19,8 @@ from app.services.task_queue import (
     TASK_TYPE_COMMENT_REPLY,
     TASK_TYPE_MESSAGE_REPLY,
     TASK_TYPE_VIDEO_RETRY,
+    TASK_TYPE_VIDEO_METRICS_SYNC,
+    TASK_TYPE_CHANNEL_METRICS_SYNC,
     claim_next_task,
     complete_task,
     fail_task,
