@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ChannelsPage } from './components/channels/ChannelsPage';
 import {
   Activity,
   AlertTriangle,
@@ -120,6 +121,7 @@ const SOURCE_PLATFORM_FILTERS = [
 
 const NAV_ITEMS = [
   { id: 'overview', label: 'Tổng quan', description: 'Chỉ số và cảnh báo.', icon: Globe2 },
+  { id: 'channels', label: 'Kênh TikTok', description: 'Quản lý kênh mục tiêu.', icon: UserPlus },
   { id: 'campaigns', label: 'Chiến dịch', description: 'Nguồn, trang và chiến dịch.', icon: Share2 },
   { id: 'queue', label: 'Lịch đăng', description: 'Video, lịch và caption.', icon: Clock },
   { id: 'engagement', label: 'Tương tác', description: 'Bình luận và phản hồi AI.', icon: Bot },
@@ -3272,6 +3274,7 @@ function App() {
 
   const renderActiveSection = () => {
     switch (activeSection) {
+      case 'channels': return <ChannelsPage />;
       case 'campaigns': return renderCampaignSection();
       case 'queue': return renderQueueSection();
       case 'engagement': return renderEngagementSection();
@@ -3369,6 +3372,7 @@ function App() {
                 const Icon = item.icon;
                 const count = {
                   overview: warningCount,
+                  channels: channels.length,
                   campaigns: campaigns.length,
                   queue: stats.ready ?? 0,
                   engagement: systemInfo?.pending_comment_replies ?? 0,
@@ -3417,6 +3421,7 @@ function App() {
               const Icon = item.icon;
               const count = {
                 overview: warningCount,
+                channels: channels.length,
                 campaigns: campaigns.length,
                 queue: stats.ready ?? 0,
                 engagement: systemInfo?.pending_comment_replies ?? 0,
