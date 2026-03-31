@@ -47,7 +47,7 @@ const AUTO_REFRESH_MS = 5000;
 const TASK_PAGE_SIZE = 3;
 const TASK_FETCH_LIMIT = 24;
 const SYSTEM_EVENT_PAGE_SIZE = 3;
-const SYSTEM_EVENT_FETCH_LIMIT = 24;
+const SYSTEM_EVENT_FETCH_LIMIT = 50;
 const FIELD_CLASS = 'field-input w-full rounded-2xl px-4 py-3 text-sm text-white';
 const BUTTON_DISABLED = 'disabled:cursor-not-allowed disabled:opacity-50';
 const BUTTON_PRIMARY = `btn-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold ${BUTTON_DISABLED}`;
@@ -926,6 +926,7 @@ function App() {
   const [taskPage, setTaskPage] = useState(1);
   const [eventPage, setEventPage] = useState(1);
   const [eventLevelFilter, setEventLevelFilter] = useState('all');
+  const [autoRefreshEvents, setAutoRefreshEvents] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [expandedItems, setExpandedItems] = useState({});
   const [showAllMetrics, setShowAllMetrics] = useState(false);
@@ -1119,6 +1120,24 @@ function App() {
     setRuntimeForm(extractRuntimeForm(payload));
   };
 
+  const handleSaveRuntimeConfig = async () => {
+    if (!token || currentUser?.role !== 'admin') return;
+    setBusy('save-runtime', true);
+    try {
+      const payload = await requestJson(`${API_URL}/system/runtime-config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(runtimeForm),
+      });
+      setRuntimeConfig(payload);
+      showNotice('success', payload.message || 'Đã lưu cấu hình.');
+    } catch (error) {
+      showNotice('error', error.message);
+    } finally {
+      setBusy('save-runtime', false);
+    }
+  };
+
   const loadConversationDetail = async (conversationId, { silent = false } = {}) => {
     if (!token || !conversationId) {
       setSelectedConversation(null);
@@ -1298,6 +1317,17 @@ function App() {
 
     return () => clearTimeout(timeout);
   }, [pendingOperatorComposerId, selectedConversation]);
+
+  useEffect(() => {
+    if (!autoRefreshEvents) return;
+    const interval = setInterval(async () => {
+      try {
+        const eventData = await requestJson(`${API_URL}/system/events?limit=${SYSTEM_EVENT_FETCH_LIMIT}${eventLevelFilter !== 'all' ? `&level=${eventLevelFilter}` : ''}`);
+        setEvents(eventData.events || []);
+      } catch (err) { console.error('Auto-refresh events failed:', err); }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [autoRefreshEvents, eventLevelFilter]);
 
   const handleSectionChange = (sectionId) => {
     setActiveSection(sectionId);
@@ -3661,16 +3691,35 @@ function App() {
     </div>
   );
 
-  const renderOperationsSection = () => (
+  const renderOperationsSection = () => {
+    const healthComponents = [
+      { key: 'database', label: 'Database', ok: healthInfo?.database?.ok, message: healthInfo?.database?.error || 'Kết nối ổn' },
+      { key: 'facebook', label: 'Facebook API', ok: healthInfo?.dependencies?.facebook_graph?.ok, message: healthInfo?.dependencies?.facebook_graph?.message || 'Chưa cấu hình' },
+      { key: 'gemini', label: 'Gemini API', ok: healthInfo?.dependencies?.gemini?.ok, message: healthInfo?.dependencies?.gemini?.message || 'Chưa cấu hình' },
+      { key: 'ytdlp', label: 'yt-dlp', ok: healthInfo?.dependencies?.yt_dlp?.ok, message: healthInfo?.dependencies?.yt_dlp?.message || 'Không rõ' },
+    ];
+
+    return (
     <div className="grid gap-6 2xl:grid-cols-12">
-      <Panel className="2xl:col-span-4" eyebrow="Health" title="Sức khỏe hệ thống">
-        <div className="space-y-3">
-          <InfoRow label="Database" value={healthInfo?.database?.ok ? 'Kết nối ổn' : 'Có lỗi'} emphasis />
-          <InfoRow label="Worker trực tuyến" value={onlineWorkers} />
-          <InfoRow label="Worker stale" value={staleWorkers.length} />
-          <InfoRow label="Task queue poll" value={`${healthInfo?.config?.task_queue_poll_seconds ?? 0} giây`} />
-          <InfoRow label="Xác minh chữ ký webhook" value={healthInfo?.config?.webhook_signature_enabled ? 'Đang bật' : 'Chưa bật'} />
-          <InfoRow label="Chế độ nền" value={healthInfo?.worker?.expected_mode || 'Chưa có'} />
+      <Panel className="2xl:col-span-12" eyebrow="Health" title="Sức khỏe hệ thống">
+        <div className="mb-4 flex items-center justify-between">
+          <StatusPill tone={healthInfo?.status === 'healthy' ? 'emerald' : healthInfo?.status === 'degraded' ? 'amber' : 'rose'} icon={Server}>
+            {healthInfo?.status === 'healthy' ? 'Hệ thống khỏe mạnh' : healthInfo?.status === 'degraded' ? 'Hệ thống suy giảm' : 'Hệ thống không ổn định'}
+          </StatusPill>
+          <div className="text-xs text-[var(--text-muted)]">Kiểm tra lúc: {formatDateTime(healthInfo?.checked_at)}</div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {healthComponents.map((comp) => (
+            <div key={comp.key} className={cx('rounded-[24px] border p-4', comp.ok ? 'border-emerald-400/20 bg-emerald-400/5' : 'border-rose-400/20 bg-rose-400/5')}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-white">{comp.label}</span>
+                <span className={cx('inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium', comp.ok ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-100' : 'border-rose-400/30 bg-rose-400/10 text-rose-100')}>
+                  {comp.ok ? 'Up' : 'Down'}
+                </span>
+              </div>
+              <div className="mt-2 text-xs text-[var(--text-soft)]">{comp.message}</div>
+            </div>
+          ))}
         </div>
       </Panel>
 
@@ -3709,6 +3758,22 @@ function App() {
           <InfoRow label="Completed" value={taskSummary.completed ?? 0} />
           <InfoRow label="Failed" value={taskSummary.failed ?? 0} />
         </div>
+      </Panel>
+
+      <Panel className="2xl:col-span-4" eyebrow="Config" title="Cấu hình hệ thống">
+        {!isAdmin ? (
+          <EmptyState title="Không có quyền" description="Cần quyền admin để xem cấu hình." />
+        ) : (
+          <div className="space-y-3">
+            <InfoRow label="Chế độ nền" value={healthInfo?.worker?.expected_mode || 'Chưa có'} />
+            <InfoRow label="Task queue poll" value={`${healthInfo?.config?.task_queue_poll_seconds ?? 0} giây`} />
+            <InfoRow label="Webhook signature" value={healthInfo?.config?.webhook_signature_enabled ? 'Đang bật' : 'Chưa bật'} />
+            <InfoRow label="Scheduler" value={healthInfo?.config?.scheduler_enabled ? 'Bật' : 'Tắt'} />
+            <button type="button" className={cx(BUTTON_SECONDARY, 'mt-3 w-full')} onClick={() => loadRuntimeConfig()}>
+              <KeyRound className="h-4 w-4" />Xem cấu hình chi tiết
+            </button>
+          </div>
+        )}
       </Panel>
 
       <Panel className="2xl:col-span-6" eyebrow="Task queue" title="Tác vụ gần nhất" action={<div className="rounded-[22px] border border-white/8 bg-black/10 px-4 py-3 text-sm text-[var(--text-soft)]">Trang {taskPage} / {totalTaskPages}</div>}>
@@ -3752,7 +3817,22 @@ function App() {
         ) : null}
       </Panel>
 
-      <Panel className="2xl:col-span-6" eyebrow="System events" title="Nhật ký hệ thống" action={<div className="rounded-[22px] border border-white/8 bg-black/10 px-4 py-3 text-sm text-[var(--text-soft)]">Trang {eventPage} / {totalEventPages}</div>}>
+      <Panel className="2xl:col-span-6" eyebrow="System events" title="Nhật ký hệ thống" action={
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={autoRefreshEvents} onChange={(e) => setAutoRefreshEvents(e.target.checked)} className="w-4 h-4 rounded border-white/20 bg-black/20 text-cyan-400" />
+            <span className="text-xs text-[var(--text-soft)]">Auto (30s)</span>
+          </label>
+          <div className="rounded-[22px] border border-white/8 bg-black/10 px-3 py-1.5 text-xs text-[var(--text-soft)]">Trang {eventPage}/{totalEventPages}</div>
+        </div>
+      }>
+        <div className="mb-4 flex flex-wrap gap-2">
+          {['all', 'INFO', 'WARNING', 'ERROR'].map((level) => (
+            <button key={level} type="button" onClick={() => setEventLevelFilter(level)} className={cx('rounded-full border px-3 py-1 text-xs font-medium transition', eventLevelFilter === level ? 'border-cyan-400/50 bg-cyan-400/10 text-cyan-100' : 'border-white/10 bg-black/10 text-[var(--text-soft)] hover:border-white/20')}>
+              {level === 'all' ? 'Tất cả' : level}
+            </button>
+          ))}
+        </div>
         <div className="space-y-3">
           {events.length === 0 ? <EmptyState title="Chưa có sự kiện" description="Sự kiện sẽ hiện tại đây." /> : pagedEvents.map((event) => (
             <div key={event.id} className="rounded-[24px] border border-white/8 bg-black/10 p-4">
@@ -3784,8 +3864,35 @@ function App() {
           </div>
         ) : null}
       </Panel>
+
+      {isAdmin && runtimeConfig && (
+        <Panel className="2xl:col-span-12" eyebrow="Runtime Config" title="Cấu hình chi tiết">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Object.entries(runtimeForm).map(([key, value]) => (
+              <label key={key} className="block space-y-2">
+                <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">{key}</span>
+                <input type="password" className={FIELD_CLASS} value={value} onChange={(e) => setRuntimeForm((current) => ({ ...current, [key]: e.target.value }))} placeholder={key.includes('KEY') ? '••••••••' : ''} />
+              </label>
+            ))}
+          </div>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button type="button" className={BUTTON_PRIMARY} onClick={handleSaveRuntimeConfig} disabled={actionState['save-runtime']}>
+              <KeyRound className="h-4 w-4" />{actionState['save-runtime'] ? 'Đang lưu...' : 'Lưu cấu hình'}
+            </button>
+            <button type="button" className={BUTTON_GHOST} onClick={() => loadRuntimeConfig()}>
+              <RefreshCw className="h-4 w-4" />Hủy
+            </button>
+          </div>
+          {runtimeConfig?.message && (
+            <div className={cx('mt-4 rounded-[20px] border px-4 py-3 text-sm', runtimeConfig.changed_keys?.length ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-black/10 text-[var(--text-soft)]')}>
+              {runtimeConfig.message}
+            </div>
+          )}
+        </Panel>
+      )}
     </div>
   );
+  };
 
   const renderSecuritySection = () => (
     <div className="grid gap-6 2xl:grid-cols-12">
