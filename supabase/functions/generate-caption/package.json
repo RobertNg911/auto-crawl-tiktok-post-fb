@@ -1,0 +1,16 @@
+{
+  "name": "generate-caption",
+  "version": "0.1.0",
+  "description": "Edge function for generating AI captions using Gemini",
+  "main": "index.ts",
+  "scripts": {
+    "dev": "supabase functions serve generate-caption",
+    "deploy": "supabase functions deploy generate-caption"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  }
+}
