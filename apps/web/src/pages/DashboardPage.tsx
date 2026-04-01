@@ -1,4 +1,4 @@
-import { useDashboard } from '../hooks/useDashboard';
+import { useDashboard } from '../../hooks/useDashboard';
 
 export default function DashboardPage() {
   const { overview, loading, error, refresh } = useDashboard();

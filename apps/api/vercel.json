@@ -1,20 +1,12 @@
 {
-  "crons": [
+  "version": 2,
+  "builds": [
     {
-      "path": "/api/cron/process-queue",
-      "schedule": "*/1 * * * *"
-    },
-    {
-      "path": "/api/cron/sync-campaigns",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/process-scheduled-posts",
-      "schedule": "*/2 * * * *"
-    },
-    {
-      "path": "/api/cron/health-check",
-      "schedule": "*/5 * * * *"
+      "src": "api/**/*.ts",
+      "use": "@vercel/node"
     }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/$1" }
   ]
 }

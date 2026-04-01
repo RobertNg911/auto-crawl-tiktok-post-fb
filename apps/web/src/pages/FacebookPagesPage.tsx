@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useFacebookPages } from '../hooks/useFacebookPages';
+import { useFacebookPages } from '../../hooks/useFacebookPages';
 
 export default function FacebookPagesPage() {
   const { pages, loading, error, createPage, updatePage, deletePage } = useFacebookPages();

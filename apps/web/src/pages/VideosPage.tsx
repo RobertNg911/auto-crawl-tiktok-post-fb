@@ -1,4 +1,4 @@
-import { useVideos } from '../hooks/useVideos';
+import { useVideos } from '../../hooks/useVideos';
 
 export default function VideosPage() {
   const { videos, loading, error, page, totalPages, setPage, deleteVideo, publishVideo } =

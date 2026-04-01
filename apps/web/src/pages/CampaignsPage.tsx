@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useCampaigns } from '../hooks/useCampaigns';
+import { useCampaigns } from '../../hooks/useCampaigns';
 
 export default function CampaignsPage() {
   const { campaigns, loading, error, page, totalPages, setPage, deleteCampaign, syncCampaign } =

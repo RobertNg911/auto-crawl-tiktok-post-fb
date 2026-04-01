@@ -7,7 +7,7 @@ import VideosPage from './pages/VideosPage';
 import FacebookPagesPage from './pages/FacebookPagesPage';
 import Layout from './components/Layout';
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+function ProtectedRoute({ children }: { children?: React.ReactNode }) {
   const { user, loading } = useAuth();
 
   if (loading) {
