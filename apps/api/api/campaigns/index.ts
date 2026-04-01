@@ -17,10 +17,34 @@ function getUserId(req: VercelRequest): string | null {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
+  const { id } = req.query;
+
+  if (req.method === 'GET') {
+    if (id && typeof id === 'string') {
+      return handleGetCampaign(req, res, id);
+    }
+    return handleListCampaigns(req, res);
   }
 
+  if (req.method === 'POST') {
+    if (id && typeof id === 'string') {
+      return handleCreateCampaign(req, res);
+    }
+    return handleCreateCampaign(req, res);
+  }
+
+  if (req.method === 'PATCH' && id) {
+    return handleUpdateCampaign(req, res, id as string);
+  }
+
+  if (req.method === 'DELETE' && id) {
+    return handleDeleteCampaign(req, res, id as string);
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
+async function handleListCampaigns(req: VercelRequest, res: VercelResponse) {
   try {
     const userId = getUserId(req);
     if (!userId) {
@@ -59,5 +83,127 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error: any) {
     console.error('List campaigns error:', error);
     return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+async function handleGetCampaign(req: VercelRequest, res: VercelResponse, id: string) {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const { data: campaign, error } = await supabaseAdmin
+      .from('campaigns')
+      .select(`
+        *,
+        videos(*),
+        target_channels(id, username, display_name)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error) return res.status(404).json({ error: 'Campaign not found' });
+
+    return res.status(200).json(campaign);
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+interface CreateCampaignRequest {
+  name: string;
+  source_url: string;
+  topic?: string;
+  target_page_id?: string;
+  auto_post?: boolean;
+  schedule_interval?: number;
+  view_threshold?: number;
+}
+
+async function handleCreateCampaign(req: VercelRequest, res: VercelResponse) {
+  try {
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const {
+      name,
+      source_url,
+      topic,
+      target_page_id,
+      auto_post = false,
+      schedule_interval = 0,
+      view_threshold = 0,
+    }: CreateCampaignRequest = req.body;
+
+    if (!name || !source_url) {
+      return res.status(400).json({ error: 'Name and source_url are required' });
+    }
+
+    const { data: campaign, error } = await supabaseAdmin
+      .from('campaigns')
+      .insert({
+        name,
+        source_url,
+        topic,
+        target_page_id,
+        auto_post,
+        schedule_interval,
+        view_threshold,
+        status: 'active',
+      })
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+
+    return res.status(201).json(campaign);
+  } catch (error: any) {
+    console.error('Create campaign error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+async function handleUpdateCampaign(req: VercelRequest, res: VercelResponse, id: string) {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const updates = req.body;
+    delete updates.id;
+    delete updates.created_at;
+
+    const { data: campaign, error } = await supabaseAdmin
+      .from('campaigns')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    return res.status(200).json(campaign);
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+async function handleDeleteCampaign(req: VercelRequest, res: VercelResponse, id: string) {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const { error } = await supabaseAdmin
+      .from('campaigns')
+      .update({ is_deleted: true })
+      .eq('id', id);
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    return res.status(204).send(null);
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
   }
 }

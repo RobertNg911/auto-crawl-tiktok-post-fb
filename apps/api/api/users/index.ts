@@ -14,18 +14,27 @@ function verifyAdmin(token: string): { user_id: string; role: string } | null {
   }
 }
 
+function verifyAdminAuth(authHeader: string | null | undefined): { user_id: string; role: string } | null {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+  return verifyAdmin(authHeader.split(' ')[1]);
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method === 'GET') {
+    return handleListUsers(req, res);
   }
 
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'No token provided' });
-    }
+  if (req.method === 'POST') {
+    return handleCreateUser(req, res);
+  }
 
-    if (!verifyAdmin(authHeader.split(' ')[1])) {
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
+async function handleListUsers(req: VercelRequest, res: VercelResponse) {
+  try {
+    const admin = verifyAdminAuth(req.headers.authorization);
+    if (!admin) {
       return res.status(403).json({ error: 'Admin access required' });
     }
 
@@ -57,6 +66,58 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json(userList);
   } catch (error: any) {
     console.error('List users error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+interface CreateUserRequest {
+  email: string;
+  password: string;
+  role?: string;
+  display_name?: string;
+}
+
+async function handleCreateUser(req: VercelRequest, res: VercelResponse) {
+  try {
+    const admin = verifyAdminAuth(req.headers.authorization);
+    if (!admin) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { email, password, role = 'operator', display_name }: CreateUserRequest = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+    });
+
+    if (authError) {
+      return res.status(400).json({ error: authError.message });
+    }
+
+    const { error: profileError } = await supabaseAdmin.from('user_profiles').insert({
+      id: authUser.user.id,
+      role,
+      display_name: display_name || email.split('@')[0],
+    });
+
+    if (profileError) {
+      console.error('Profile creation error:', profileError);
+    }
+
+    return res.status(201).json({
+      id: authUser.user.id,
+      email: authUser.user.email,
+      role,
+      display_name: display_name || email.split('@')[0],
+    });
+  } catch (error: any) {
+    console.error('Create user error:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 }

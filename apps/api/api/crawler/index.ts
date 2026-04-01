@@ -1,21 +1,34 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import { createWriteStream, existsSync, mkdirSync, writeFileSync } from 'fs';
+import { join } from 'path';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-interface CrawlRequest {
-  campaign_id: string;
-  source_url: string;
-}
+const DOWNLOAD_DIR = process.env.DOWNLOAD_DIR || '/tmp/downloads';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  const path = req.url || '';
+  
+  if (path.includes('download')) {
+    return handleDownload(req, res);
+  }
+  
+  return handleCrawl(req, res);
+}
+
+interface CrawlRequest {
+  campaign_id: string;
+  source_url: string;
+}
+
+async function handleCrawl(req: VercelRequest, res: VercelResponse) {
   try {
     const { campaign_id, source_url }: CrawlRequest = req.body;
 
@@ -23,13 +36,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'campaign_id and source_url are required' });
     }
 
-    // Determine platform and kind from URL
     const platformInfo = analyzeSourceUrl(source_url);
-
-    // Call external crawler service (or TikWM API directly)
     const videos = await fetchVideosFromCrawler(source_url, platformInfo);
 
-    // Insert videos into database
     let insertedCount = 0;
     for (const video of videos) {
       const { error } = await supabase
@@ -51,7 +60,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!error) insertedCount++;
     }
 
-    // Update campaign last_synced_at
     await supabase
       .from('campaigns')
       .update({
@@ -69,7 +77,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error: any) {
     console.error('Crawl error:', error);
 
-    // Update campaign with error
     if (req.body.campaign_id) {
       await supabase
         .from('campaigns')
@@ -78,6 +85,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           last_sync_error: error.message,
         })
         .eq('id', req.body.campaign_id);
+    }
+
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+interface DownloadRequest {
+  video_id: string;
+  source_url: string;
+}
+
+async function handleDownload(req: VercelRequest, res: VercelResponse) {
+  try {
+    const { video_id, source_url }: DownloadRequest = req.body;
+
+    if (!video_id || !source_url) {
+      return res.status(400).json({ error: 'video_id and source_url are required' });
+    }
+
+    await supabase
+      .from('videos')
+      .update({ status: 'downloading' })
+      .eq('id', video_id);
+
+    const filePath = await downloadVideo(video_id, source_url);
+    const storageUrl = await uploadToStorage(video_id, filePath);
+
+    await supabase
+      .from('videos')
+      .update({
+        file_path: storageUrl,
+        status: 'ready',
+      })
+      .eq('id', video_id);
+
+    return res.status(200).json({
+      success: true,
+      video_id,
+      file_path: storageUrl,
+    });
+  } catch (error: any) {
+    console.error('Download error:', error);
+
+    if (req.body.video_id) {
+      await supabase
+        .from('videos')
+        .update({
+          status: 'failed',
+          last_error: error.message,
+        })
+        .eq('id', req.body.video_id);
     }
 
     return res.status(500).json({ error: error.message });
@@ -109,24 +167,17 @@ async function fetchVideosFromCrawler(
   url: string,
   platformInfo: { platform: string; kind: string }
 ): Promise<any[]> {
-  const urlLower = url.toLowerCase();
-
-  // TikTok
   if (platformInfo.platform === 'tiktok') {
     return fetchTiktokVideos(url, platformInfo.kind);
   }
-
-  // YouTube
   if (platformInfo.platform === 'youtube') {
     return fetchYoutubeShorts(url);
   }
-
   return [];
 }
 
 async function fetchTiktokVideos(url: string, kind: string): Promise<any[]> {
   try {
-    // Use TikWM API
     const apiUrl = 'https://www.tikwm.com/api/';
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -164,7 +215,6 @@ async function fetchTiktokVideos(url: string, kind: string): Promise<any[]> {
 
 async function fetchYoutubeShorts(url: string): Promise<any[]> {
   try {
-    // Extract video ID
     const patterns = [
       /(?:youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/,
       /(?:youtu\.be\/)([a-zA-Z0-9_-]{11})/,
@@ -181,7 +231,6 @@ async function fetchYoutubeShorts(url: string): Promise<any[]> {
 
     if (!videoId) return [];
 
-    // Use Invidious API
     const response = await fetch(
       `https://invidious.snopyta.org/api/v1/videos/${videoId}`,
       { headers: { 'User-Agent': 'Mozilla/5.0' } }
@@ -211,4 +260,47 @@ async function fetchYoutubeShorts(url: string): Promise<any[]> {
     console.error('YouTube API error:', error);
     return [];
   }
+}
+
+async function downloadVideo(videoId: string, sourceUrl: string): Promise<string> {
+  const dir = join(DOWNLOAD_DIR, videoId);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+
+  const filePath = join(dir, 'video.mp4');
+
+  const response = await fetch(sourceUrl, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to download: ${response.status}`);
+  }
+
+  const buffer = await response.arrayBuffer();
+  writeFileSync(filePath, Buffer.from(buffer));
+
+  return filePath;
+}
+
+async function uploadToStorage(videoId: string, filePath: string): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from('videos')
+    .upload(`${videoId}/video.mp4`, filePath, {
+      contentType: 'video/mp4',
+      upsert: true,
+    });
+
+  if (error) {
+    throw error;
+  }
+
+  const { data: urlData } = supabase.storage
+    .from('videos')
+    .getPublicUrl(`${videoId}/video.mp4`);
+
+  return urlData.publicUrl;
 }

@@ -16,12 +16,27 @@ function getUserId(req: VercelRequest): string | null {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const { page_id } = req.query;
+
   if (req.method === 'GET') {
     return handleList(req, res);
   }
+
   if (req.method === 'POST') {
+    if (page_id && typeof page_id === 'string') {
+      return res.status(400).json({ error: 'Use PATCH to update page' });
+    }
     return handleCreate(req, res);
   }
+
+  if (req.method === 'PATCH' && page_id) {
+    return handleUpdate(req, res, page_id as string);
+  }
+
+  if (req.method === 'DELETE' && page_id) {
+    return handleDelete(req, res, page_id as string);
+  }
+
   return res.status(405).json({ error: 'Method not allowed' });
 }
 
@@ -92,6 +107,48 @@ async function handleCreate(req: VercelRequest, res: VercelResponse) {
     }
 
     return res.status(201).json(page);
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+async function handleUpdate(req: VercelRequest, res: VercelResponse, pageId: string) {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const updates = req.body;
+    delete updates.id;
+    delete updates.created_at;
+
+    const { data: page, error } = await supabaseAdmin
+      .from('facebook_pages')
+      .update(updates)
+      .eq('id', pageId)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    return res.status(200).json(page);
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+async function handleDelete(req: VercelRequest, res: VercelResponse, pageId: string) {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const { error } = await supabaseAdmin
+      .from('facebook_pages')
+      .update({ is_deleted: true })
+      .eq('id', pageId);
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    return res.status(204).send(null);
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }
