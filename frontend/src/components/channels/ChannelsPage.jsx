@@ -1,93 +1,107 @@
-import { useState, useMemo } from 'react';
-import { Plus, Users, RefreshCw } from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
+import { Plus, Users, RefreshCw, Loader2 } from 'lucide-react';
 import { ChannelCard } from './ChannelCard';
 import { ChannelFilters } from './ChannelFilters';
 import { ChannelForm } from './ChannelForm';
 import { ChannelDetailPage } from './ChannelDetailPage';
-import { MOCK_CHANNELS } from '../../data/mockChannels';
 
-export function ChannelsPage() {
-  const [channels, setChannels] = useState(MOCK_CHANNELS);
+const API_URL = '/api';
+
+export function ChannelsPage({ token }) {
+  const [channels, setChannels] = useState([]);
+  const [totalPages, setTotalPages] = useState(1);
+  const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({ status: 'all', topic: 'all', search: '' });
   const [showForm, setShowForm] = useState(false);
   const [editingChannel, setEditingChannel] = useState(null);
-  const [selectedChannels, setSelectedChannels] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [viewingChannel, setViewingChannel] = useState(null);
+  const [error, setError] = useState(null);
 
-  const filteredChannels = useMemo(() => {
-    return channels.filter((channel) => {
-      if (filters.status !== 'all' && channel.status !== filters.status) return false;
-      if (filters.topic !== 'all' && channel.topic !== filters.topic) return false;
-      if (filters.search) {
-        const searchLower = filters.search.toLowerCase();
-        const matchUsername = channel.username.toLowerCase().includes(searchLower);
-        const matchDisplayName = channel.display_name?.toLowerCase().includes(searchLower);
-        if (!matchUsername && !matchDisplayName) return false;
-      }
-      return true;
-    });
-  }, [channels, filters]);
-
-  const handleSelectChannel = (id, checked) => {
-    setSelectedChannels((prev) =>
-      checked ? [...prev, id] : prev.filter((c) => c !== id)
-    );
-  };
-
-  const handleSelectAll = () => {
-    if (selectedChannels.length === filteredChannels.length) {
-      setSelectedChannels([]);
-    } else {
-      setSelectedChannels(filteredChannels.map((c) => c.id));
+  const authFetch = useCallback(async (url, options = {}) => {
+    const headers = { ...options.headers };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await fetch(url, { ...options, headers });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new Error(payload?.detail || payload?.message || 'Request failed');
     }
-  };
+    return response.json();
+  }, [token]);
+
+  const fetchChannels = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        page_size: '20',
+      });
+      if (filters.status !== 'all') params.set('status', filters.status);
+      if (filters.topic !== 'all') params.set('topic', filters.topic);
+      if (filters.search) params.set('search', filters.search);
+
+      const data = await authFetch(`${API_URL}/channels?${params.toString()}`);
+      setChannels(data.items || []);
+      setTotalPages(data.total_pages || 1);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [authFetch, page, filters]);
+
+  useEffect(() => {
+    if (token) fetchChannels();
+  }, [fetchChannels, token]);
 
   const handleAddChannel = async (formData) => {
-    const newChannel = {
-      id: String(Date.now()),
-      channel_id: `ch_${Date.now()}`,
-      username: formData.username,
-      display_name: formData.display_name,
-      topic: formData.topic,
-      status: 'active',
-      latest_metrics: null,
-      created_at: new Date().toISOString(),
-    };
-    setChannels((prev) => [...prev, newChannel]);
+    const payload = await authFetch(`${API_URL}/channels`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData),
+    });
+    setChannels((prev) => [payload, ...prev]);
   };
 
   const handleEditChannel = async (formData) => {
+    const payload = await authFetch(`${API_URL}/channels/${editingChannel.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        display_name: formData.display_name,
+        topic: formData.topic,
+      }),
+    });
     setChannels((prev) =>
-      prev.map((c) =>
-        c.id === editingChannel.id
-          ? { ...c, display_name: formData.display_name, topic: formData.topic }
-          : c
-      )
+      prev.map((c) => (c.id === editingChannel.id ? payload : c))
     );
     setEditingChannel(null);
   };
 
-  const handleDeleteChannel = (id) => {
-    if (confirm('Bạn có chắc chắn muốn xóa kênh này?')) {
+  const handleDeleteChannel = async (id) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa kênh này?')) return;
+    try {
+      await authFetch(`${API_URL}/channels/${id}`, { method: 'DELETE' });
       setChannels((prev) => prev.filter((c) => c.id !== id));
-      setSelectedChannels((prev) => prev.filter((c) => c !== id));
+    } catch (err) {
+      alert(err.message);
     }
   };
 
-  const handleToggleStatus = (id) => {
-    setChannels((prev) =>
-      prev.map((c) =>
-        c.id === id ? { ...c, status: c.status === 'active' ? 'inactive' : 'active' } : c
-      )
-    );
-  };
-
-  const handleBulkDelete = () => {
-    if (selectedChannels.length === 0) return;
-    if (confirm(`Bạn có chắc chắn muốn xóa ${selectedChannels.length} kênh đã chọn?`)) {
-      setChannels((prev) => prev.filter((c) => !selectedChannels.includes(c.id)));
-      setSelectedChannels([]);
+  const handleToggleStatus = async (id) => {
+    const channel = channels.find((c) => c.id === id);
+    if (!channel) return;
+    const newStatus = channel.status === 'active' ? 'inactive' : 'active';
+    try {
+      const payload = await authFetch(`${API_URL}/channels/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      setChannels((prev) => prev.map((c) => (c.id === id ? payload : c)));
+    } catch (err) {
+      alert(err.message);
     }
   };
 
@@ -105,9 +119,10 @@ export function ChannelsPage() {
 
   if (viewingChannel) {
     return (
-      <ChannelDetailPage 
-        channel={viewingChannel} 
-        onBack={() => setViewingChannel(null)} 
+      <ChannelDetailPage
+        channel={viewingChannel}
+        onBack={() => setViewingChannel(null)}
+        token={token}
       />
     );
   }
@@ -122,9 +137,12 @@ export function ChannelsPage() {
           </p>
         </div>
         <div className="flex gap-3">
-          <button className="btn-secondary inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium">
-            <RefreshCw className="h-4 w-4" />
-            Đồng bộ
+          <button
+            onClick={fetchChannels}
+            className="btn-secondary inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium"
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Làm mới
           </button>
           <button
             onClick={() => {
@@ -139,63 +157,77 @@ export function ChannelsPage() {
         </div>
       </div>
 
-      <ChannelFilters filters={filters} onFilterChange={setFilters} onSearch={() => {}} />
+      <ChannelFilters filters={filters} onFilterChange={setFilters} onSearch={fetchChannels} />
 
-      {selectedChannels.length > 0 && (
-        <div className="flex items-center gap-3 rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3">
-          <span className="text-sm text-cyan-100">
-            {selectedChannels.length} kênh được chọn
-          </span>
-          <button
-            onClick={handleBulkDelete}
-            className="ml-auto text-sm text-rose-400 transition hover:text-rose-300"
-          >
-            Xóa đã chọn
-          </button>
-          <button
-            onClick={() => setSelectedChannels([])}
-            className="text-sm text-slate-400 transition hover:text-white"
-          >
-            Bỏ chọn
-          </button>
+      {error && (
+        <div className="rounded-xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+          {error}
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {filteredChannels.map((channel) => (
-          <ChannelCard
-            key={channel.id}
-            channel={channel}
-            isSelected={selectedChannels.includes(channel.id)}
-            onSelect={handleSelectChannel}
-            onClick={handleViewChannel}
-            onEdit={() => {
-              setEditingChannel(channel);
-              setShowForm(true);
-            }}
-            onDelete={() => handleDeleteChannel(channel.id)}
-            onToggleStatus={() => handleToggleStatus(channel.id)}
-          />
-        ))}
-      </div>
-
-      {filteredChannels.length === 0 && (
-        <div className="rounded-[20px] border border-dashed border-white/10 bg-black/10 px-4 py-12 text-center">
-          <Users className="mx-auto h-12 w-12 text-slate-600" />
-          <div className="mt-4 font-display text-lg font-semibold text-white">
-            Chưa có kênh nào
-          </div>
-          <p className="mt-2 text-sm text-slate-400">
-            Thêm kênh TikTok để bắt đầu theo dõi nội dung
-          </p>
-          <button
-            onClick={() => setShowForm(true)}
-            className="btn-primary mt-6 inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold"
-          >
-            <Plus className="h-4 w-4" />
-            Thêm kênh đầu tiên
-          </button>
+      {isLoading && channels.length === 0 ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
         </div>
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {channels.map((channel) => (
+              <ChannelCard
+                key={channel.id}
+                channel={channel}
+                onClick={handleViewChannel}
+                onEdit={() => {
+                  setEditingChannel(channel);
+                  setShowForm(true);
+                }}
+                onDelete={() => handleDeleteChannel(channel.id)}
+                onToggleStatus={() => handleToggleStatus(channel.id)}
+              />
+            ))}
+          </div>
+
+          {channels.length === 0 && (
+            <div className="rounded-[20px] border border-dashed border-white/10 bg-black/10 px-4 py-12 text-center">
+              <Users className="mx-auto h-12 w-12 text-slate-600" />
+              <div className="mt-4 font-display text-lg font-semibold text-white">
+                Chưa có kênh nào
+              </div>
+              <p className="mt-2 text-sm text-slate-400">
+                Thêm kênh TikTok để bắt đầu theo dõi nội dung
+              </p>
+              <button
+                onClick={() => setShowForm(true)}
+                className="btn-primary mt-6 inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold"
+              >
+                <Plus className="h-4 w-4" />
+                Thêm kênh đầu tiên
+              </button>
+            </div>
+          )}
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300 disabled:opacity-40"
+              >
+                Trước
+              </button>
+              <span className="text-sm text-slate-400">
+                Trang {page} / {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300 disabled:opacity-40"
+              >
+                Sau
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {showForm && (

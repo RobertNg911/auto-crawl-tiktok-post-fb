@@ -6,7 +6,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api.auth import require_admin
-from app.core.config import DEFAULT_JWT_SECRET, DEFAULT_TOKEN_ENCRYPTION_SECRET, settings
+from app.core.config import (
+    DEFAULT_JWT_SECRET,
+    DEFAULT_TOKEN_ENCRYPTION_SECRET,
+    settings,
+)
 from app.core.database import get_db
 from app.core.time import utc_now
 from app.models.models import (
@@ -40,7 +44,11 @@ from app.services.runtime_settings import (
     update_runtime_settings,
 )
 from app.services.security import is_default_secret
-from app.services.task_queue import count_stale_processing_tasks, serialize_task, summarize_tasks
+from app.services.task_queue import (
+    count_stale_processing_tasks,
+    serialize_task,
+    summarize_tasks,
+)
 from app.services.ytdlp_crawler import get_downloader_health
 
 router = APIRouter(prefix="/system", tags=["Hệ thống"])
@@ -56,8 +64,14 @@ class RuntimeSettingsUpdateRequest(BaseModel):
 
 def serialize_worker(worker: WorkerHeartbeat) -> dict:
     now = utc_now()
-    age_seconds = int((now - worker.last_seen_at).total_seconds()) if worker.last_seen_at else None
-    is_online = bool(age_seconds is not None and age_seconds <= settings.WORKER_STALE_SECONDS)
+    age_seconds = (
+        int((now - worker.last_seen_at).total_seconds())
+        if worker.last_seen_at
+        else None
+    )
+    is_online = bool(
+        age_seconds is not None and age_seconds <= settings.WORKER_STALE_SECONDS
+    )
     return {
         "worker_name": worker.worker_name,
         "app_role": worker.app_role,
@@ -66,7 +80,9 @@ def serialize_worker(worker: WorkerHeartbeat) -> dict:
         "current_task_id": worker.current_task_id,
         "current_task_type": worker.current_task_type,
         "details": worker.details or {},
-        "last_seen_at": worker.last_seen_at.isoformat() if worker.last_seen_at else None,
+        "last_seen_at": worker.last_seen_at.isoformat()
+        if worker.last_seen_at
+        else None,
         "age_seconds": age_seconds,
         "is_online": is_online,
     }
@@ -95,10 +111,14 @@ def get_system_overview(db: Session = Depends(get_db)):
     worker_cutoff = utc_now() - timedelta(seconds=settings.WORKER_STALE_SECONDS)
 
     if not webhook_url or not webhook_url.startswith("https://"):
-        warnings.append("BASE_URL chưa là HTTPS công khai. Facebook webhook sẽ không hoạt động ổn định.")
+        warnings.append(
+            "BASE_URL chưa là HTTPS công khai. Facebook webhook sẽ không hoạt động ổn định."
+        )
     if is_default_secret(settings.JWT_SECRET, DEFAULT_JWT_SECRET):
         warnings.append("JWT_SECRET đang dùng giá trị mặc định.")
-    if is_default_secret(settings.TOKEN_ENCRYPTION_SECRET, DEFAULT_TOKEN_ENCRYPTION_SECRET):
+    if is_default_secret(
+        settings.TOKEN_ENCRYPTION_SECRET, DEFAULT_TOKEN_ENCRYPTION_SECRET
+    ):
         warnings.append("TOKEN_ENCRYPTION_SECRET đang dùng giá trị mặc định.")
     if not fb_app_secret:
         warnings.append("Chưa cấu hình FB_APP_SECRET nên chưa xác minh chữ ký webhook.")
@@ -106,11 +126,25 @@ def get_system_overview(db: Session = Depends(get_db)):
         warnings.append("Chưa cấu hình TUNNEL_TOKEN nên tunnel chưa thể tự kết nối.")
 
     active_users = db.query(User).filter(User.is_active.is_(True)).count()
-    online_workers = db.query(WorkerHeartbeat).filter(WorkerHeartbeat.last_seen_at >= worker_cutoff).count()
+    online_workers = (
+        db.query(WorkerHeartbeat)
+        .filter(WorkerHeartbeat.last_seen_at >= worker_cutoff)
+        .count()
+    )
     queue_summary = summarize_tasks(db)
-    must_change_password = db.query(User).filter(User.must_change_password.is_(True)).count()
-    pending_comment_replies = db.query(InteractionLog).filter(InteractionLog.status == InteractionStatus.pending).count()
-    pending_message_replies = db.query(InboxMessageLog).filter(InboxMessageLog.status == InteractionStatus.pending).count()
+    must_change_password = (
+        db.query(User).filter(User.must_change_password.is_(True)).count()
+    )
+    pending_comment_replies = (
+        db.query(InteractionLog)
+        .filter(InteractionLog.status == InteractionStatus.pending)
+        .count()
+    )
+    pending_message_replies = (
+        db.query(InboxMessageLog)
+        .filter(InboxMessageLog.status == InteractionStatus.pending)
+        .count()
+    )
     stale_processing_tasks = count_stale_processing_tasks(db)
 
     if must_change_password:
@@ -127,20 +161,30 @@ def get_system_overview(db: Session = Depends(get_db)):
         "base_url": base_url,
         "webhook_url": webhook_url,
         "verify_token": verify_token,
-        "public_webhook_ready": bool(webhook_url and webhook_url.startswith("https://")),
+        "public_webhook_ready": bool(
+            webhook_url and webhook_url.startswith("https://")
+        ),
         "webhook_signature_enabled": bool(fb_app_secret),
         "tunnel_token_configured": bool(tunnel_token),
         "background_jobs_mode": settings.BACKGROUND_JOBS_MODE,
         "scheduler_enabled": settings.SCHEDULER_ENABLED,
         "scheduler_interval_minutes": settings.SCHEDULER_INTERVAL_MINUTES,
         "connected_pages": db.query(FacebookPage).count(),
-        "active_campaigns": db.query(Campaign).filter(Campaign.status == CampaignStatus.active).count(),
-        "paused_campaigns": db.query(Campaign).filter(Campaign.status == CampaignStatus.paused).count(),
-        "queue_ready": db.query(Video).filter(Video.status == VideoStatus.ready).count(),
+        "active_campaigns": db.query(Campaign)
+        .filter(Campaign.status == CampaignStatus.active)
+        .count(),
+        "paused_campaigns": db.query(Campaign)
+        .filter(Campaign.status == CampaignStatus.paused)
+        .count(),
+        "queue_ready": db.query(Video)
+        .filter(Video.status == VideoStatus.ready)
+        .count(),
         "pending_comment_replies": pending_comment_replies,
         "pending_message_replies": pending_message_replies,
         "pending_replies": pending_comment_replies + pending_message_replies,
-        "message_auto_reply_pages": db.query(FacebookPage).filter(FacebookPage.message_auto_reply_enabled.is_(True)).count(),
+        "message_auto_reply_pages": db.query(FacebookPage)
+        .filter(FacebookPage.message_auto_reply_enabled.is_(True))
+        .count(),
         "active_users": active_users,
         "online_workers": online_workers,
         "must_change_password_users": must_change_password,
@@ -163,7 +207,12 @@ def get_system_health(db: Session = Depends(get_db)):
     base_url = resolve_runtime_value("BASE_URL", db=db).rstrip("/")
     tunnel_token = resolve_runtime_value("TUNNEL_TOKEN", db=db)
     fb_app_secret = resolve_runtime_value("FB_APP_SECRET", db=db)
-    workers = [serialize_worker(worker) for worker in db.query(WorkerHeartbeat).order_by(WorkerHeartbeat.last_seen_at.desc()).all()]
+    workers = [
+        serialize_worker(worker)
+        for worker in db.query(WorkerHeartbeat)
+        .order_by(WorkerHeartbeat.last_seen_at.desc())
+        .all()
+    ]
     queue_health = build_queue_health(db)
     downloader_health = get_downloader_health()
     runtime_env_health = check_runtime_env_health()
@@ -239,7 +288,10 @@ def save_runtime_config(
             "Đã cập nhật cấu hình runtime từ dashboard.",
             db=db,
             actor_user_id=str(current_user.id),
-            details={"changed_keys": changed_keys, "restart_required_keys": restart_required_keys},
+            details={
+                "changed_keys": changed_keys,
+                "restart_required_keys": restart_required_keys,
+            },
         )
 
     message = "Không có thay đổi nào được lưu."
@@ -256,19 +308,39 @@ def save_runtime_config(
 
 @router.get("/tasks")
 def get_tasks(limit: int = 20, db: Session = Depends(get_db)):
-    tasks = db.query(TaskQueue).order_by(TaskQueue.created_at.desc()).limit(min(max(limit, 1), 100)).all()
-    return {"tasks": [serialize_task(task) for task in tasks], "summary": summarize_tasks(db)}
+    tasks = (
+        db.query(TaskQueue)
+        .order_by(TaskQueue.created_at.desc())
+        .limit(min(max(limit, 1), 100))
+        .all()
+    )
+    return {
+        "tasks": [serialize_task(task) for task in tasks],
+        "summary": summarize_tasks(db),
+    }
 
 
 @router.get("/events")
-def get_events(limit: int = 30, db: Session = Depends(get_db)):
-    events = db.query(SystemEvent).order_by(SystemEvent.created_at.desc()).limit(min(max(limit, 1), 200)).all()
+def get_events(
+    level: str | None = None, limit: int = 30, db: Session = Depends(get_db)
+):
+    query = db.query(SystemEvent)
+    if level:
+        level_upper = level.upper()
+        query = query.filter(SystemEvent.level == level_upper)
+    events = (
+        query.order_by(SystemEvent.created_at.desc())
+        .limit(min(max(limit, 1), 200))
+        .all()
+    )
     return {"events": [serialize_event(event) for event in events]}
 
 
 @router.get("/workers")
 def get_workers(db: Session = Depends(get_db)):
-    workers = db.query(WorkerHeartbeat).order_by(WorkerHeartbeat.last_seen_at.desc()).all()
+    workers = (
+        db.query(WorkerHeartbeat).order_by(WorkerHeartbeat.last_seen_at.desc()).all()
+    )
     return {"workers": [serialize_worker(worker) for worker in workers]}
 
 
@@ -278,11 +350,19 @@ def cleanup_stale_workers(
     db: Session = Depends(get_db),
 ):
     stale_cutoff = utc_now() - timedelta(seconds=settings.WORKER_STALE_SECONDS)
-    stale_workers = db.query(WorkerHeartbeat).filter(WorkerHeartbeat.last_seen_at < stale_cutoff).all()
+    stale_workers = (
+        db.query(WorkerHeartbeat)
+        .filter(WorkerHeartbeat.last_seen_at < stale_cutoff)
+        .all()
+    )
     stale_names = [worker.worker_name for worker in stale_workers]
 
     if not stale_workers:
-        return {"deleted_count": 0, "deleted_workers": [], "message": "Không có worker mất kết nối nào để dọn."}
+        return {
+            "deleted_count": 0,
+            "deleted_workers": [],
+            "message": "Không có worker mất kết nối nào để dọn.",
+        }
 
     deleted_count = len(stale_workers)
     for worker in stale_workers:

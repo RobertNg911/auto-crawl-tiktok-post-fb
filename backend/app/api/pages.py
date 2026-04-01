@@ -8,6 +8,15 @@ from app.models.models import Campaign, FacebookPage
 from app.services.security import encrypt_secret
 from app.services.fb_graph import inspect_page_access, inspect_user_pages
 from app.services.observability import record_event
+from app.services.ai_generator import (
+    generate_caption,
+    generate_reply,
+    generate_message_reply_with_context,
+    DEFAULT_CAPTION_PROMPT,
+    DEFAULT_COMMENT_REPLY_PROMPT,
+    DEFAULT_MESSAGE_REPLY_PROMPT,
+    CAPTION_MAX_CHARS,
+)
 
 router = APIRouter(prefix="/pages", tags=["Fanpage"])
 
@@ -23,6 +32,13 @@ class PageAutomationUpdate(BaseModel):
 
 class PageImportRequest(BaseModel):
     user_access_token: str
+
+
+class PromptTestRequest(BaseModel):
+    prompt_type: str = Field(..., description="caption|comment|inbox")
+    sample_input: str = Field(
+        ..., description="Sample input text to test the prompt against"
+    )
 
 
 def serialize_page(page: FacebookPage) -> dict:
@@ -295,3 +311,77 @@ def delete_page(
     )
 
     return {"success": True, "message": "Page deleted successfully"}
+
+
+@router.post("/{page_id}/test-prompt")
+def test_prompt(
+    page_id: str,
+    payload: PromptTestRequest,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_authenticated_user),
+):
+    """POST /api/pages/{page_id}/test-prompt - Test prompt with sample input"""
+    page = (
+        db.query(FacebookPage)
+        .filter(FacebookPage.page_id == page_id, FacebookPage.is_deleted == False)
+        .first()
+    )
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+
+    prompt_type = payload.prompt_type.lower()
+    sample_input = payload.sample_input.strip()
+
+    if not sample_input:
+        raise HTTPException(status_code=400, detail="Sample input is required")
+
+    if prompt_type not in ("caption", "comment", "inbox"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid prompt_type. Must be: caption, comment, or inbox",
+        )
+
+    max_chars = CAPTION_MAX_CHARS if prompt_type == "caption" else 200
+
+    if prompt_type == "caption":
+        custom_prompt = page.caption_prompt if page.caption_prompt else None
+        output = generate_caption(sample_input, custom_prompt)
+        effective_prompt = custom_prompt or DEFAULT_CAPTION_PROMPT
+    elif prompt_type == "comment":
+        custom_prompt = page.comment_ai_prompt if page.comment_ai_prompt else None
+        output = generate_reply(
+            sample_input, channel="comment", prompt_override=custom_prompt
+        )
+        effective_prompt = custom_prompt or DEFAULT_COMMENT_REPLY_PROMPT
+    else:
+        custom_prompt = page.message_ai_prompt if page.message_ai_prompt else None
+        result = generate_message_reply_with_context(
+            sample_input,
+            prompt_override=custom_prompt,
+            conversation_summary="Test conversation summary",
+            recent_turns=[],
+            customer_facts={},
+        )
+        output = result.get("reply", "")
+        effective_prompt = custom_prompt or DEFAULT_MESSAGE_REPLY_PROMPT
+
+    record_event(
+        "pages",
+        "info",
+        f"Tested {prompt_type} prompt for page {page.page_name}",
+        db=db,
+        details={
+            "page_id": page_id,
+            "prompt_type": prompt_type,
+            "output_length": len(output),
+        },
+    )
+
+    return {
+        "prompt_type": prompt_type,
+        "effective_prompt": effective_prompt,
+        "sample_input": sample_input,
+        "output": output,
+        "chars_used": len(output),
+        "max_chars": max_chars,
+    }

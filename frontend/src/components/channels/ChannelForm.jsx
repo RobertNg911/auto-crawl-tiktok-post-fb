@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { X, AlertCircle } from 'lucide-react';
 
+const API_URL = '/api';
+
 export function ChannelForm({ channel, onSubmit, onClose }) {
   const [formData, setFormData] = useState({
     username: '',

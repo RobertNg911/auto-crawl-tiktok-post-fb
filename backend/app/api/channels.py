@@ -14,6 +14,8 @@ from app.models.models import (
     ChannelMetricsSnapshot,
     TargetChannel,
     ChannelStatus,
+    Video,
+    VideoMetricsSnapshot,
 )
 
 router = APIRouter(prefix="/channels", tags=["Kênh mục tiêu"])
@@ -83,6 +85,34 @@ class ChannelMetricsResponse(BaseModel):
             followers=snapshot.followers,
             video_count=snapshot.video_count,
             total_views=snapshot.total_views,
+        )
+
+
+class ChannelVideoResponse(BaseModel):
+    id: str
+    original_id: str
+    source_url: str
+    views: int
+    likes: int
+    comments_count: int
+    thumbnail_url: Optional[str]
+    status: str
+    created_at: str
+
+    @classmethod
+    def from_orm(cls, video: Video):
+        return cls(
+            id=str(video.id),
+            original_id=video.original_id or "",
+            source_url=video.source_video_url or "",
+            views=video.views or 0,
+            likes=video.likes or 0,
+            comments_count=video.comments_count or 0,
+            thumbnail_url=video.thumbnail_url,
+            status=video.status.value
+            if hasattr(video.status, "value")
+            else video.status,
+            created_at=video.created_at.isoformat() if video.created_at else None,
         )
 
 
@@ -330,3 +360,102 @@ def delete_channel(channel_id: str, db: Session = Depends(get_db)):
     db.commit()
 
     return None
+
+
+@router.get("/{channel_id}/videos", response_model=dict)
+def list_channel_videos(
+    channel_id: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    sort_by: str = Query(
+        "views", description="Sort field: views, likes, comments_count, created_at"
+    ),
+    sort_order: str = Query("desc", description="Sort order: asc, desc"),
+    db: Session = Depends(get_db),
+):
+    channel_uuid = parse_uuid_or_400(channel_id, "Mã kênh")
+    channel = (
+        db.query(TargetChannel)
+        .filter(
+            TargetChannel.id == channel_uuid,
+            TargetChannel.is_deleted == False,
+        )
+        .first()
+    )
+
+    if not channel:
+        raise HTTPException(status_code=404, detail="Không tìm thấy kênh")
+
+    query = (
+        db.query(Video)
+        .join(Campaign, Video.campaign_id == Campaign.id)
+        .filter(
+            Campaign.source_url.contains(channel.username),
+            Video.is_deleted == False,
+        )
+    )
+
+    sort_field_map = {
+        "views": Video.views,
+        "likes": Video.likes,
+        "comments_count": Video.comments_count,
+        "created_at": Video.created_at,
+    }
+    sort_field = sort_field_map.get(sort_by, Video.views)
+    if sort_order == "asc":
+        query = query.order_by(sort_field.asc())
+    else:
+        query = query.order_by(sort_field.desc())
+
+    total = query.count()
+    offset = (page - 1) * page_size
+    videos = query.offset(offset).limit(page_size).all()
+
+    result_items = [ChannelVideoResponse.from_orm(v) for v in videos]
+
+    return {
+        "items": result_items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (total + page_size - 1) // page_size,
+    }
+
+
+@router.get(
+    "/{channel_id}/metrics-history", response_model=list[ChannelMetricsResponse]
+)
+def get_channel_metrics_history(
+    channel_id: str,
+    days: int = Query(30, ge=1, le=365),
+    db: Session = Depends(get_db),
+):
+    channel_uuid = parse_uuid_or_400(channel_id, "Mã kênh")
+    channel = (
+        db.query(TargetChannel)
+        .filter(
+            TargetChannel.id == channel_uuid,
+            TargetChannel.is_deleted == False,
+        )
+        .first()
+    )
+
+    if not channel:
+        raise HTTPException(status_code=404, detail="Không tìm thấy kênh")
+
+    from sqlalchemy import text
+
+    cutoff_date = utc_now() - __import__("datetime", fromlist=["timedelta"]).timedelta(
+        days=days
+    )
+    metrics_history = (
+        db.query(ChannelMetricsSnapshot)
+        .filter(
+            ChannelMetricsSnapshot.channel_id == channel.id,
+            ChannelMetricsSnapshot.snapshot_date >= cutoff_date,
+        )
+        .order_by(ChannelMetricsSnapshot.snapshot_date.asc())
+        .all()
+    )
+
+    return [ChannelMetricsResponse.from_orm(m) for m in metrics_history]

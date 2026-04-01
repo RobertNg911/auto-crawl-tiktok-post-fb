@@ -43,7 +43,12 @@ router = APIRouter(prefix="/webhooks", tags=["Webhook"])
 try:
     LOCAL_TIMEZONE = ZoneInfo(settings.APP_TIMEZONE)
 except Exception:
-    LOCAL_TIMEZONE = ZoneInfo("UTC")
+    try:
+        LOCAL_TIMEZONE = ZoneInfo("UTC")
+    except Exception:
+        from datetime import timezone
+
+        LOCAL_TIMEZONE = timezone.utc
 
 
 class ConversationHandoffUpdate(BaseModel):

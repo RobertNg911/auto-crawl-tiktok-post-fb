@@ -9,8 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "20260331_06"
-down_revision = "20260331_05"
+revision = "20260331_06_facebook_page_automation"
+down_revision = "20260331_05_channel_metrics_snapshots"
 branch_labels = None
 depends_on = None
 

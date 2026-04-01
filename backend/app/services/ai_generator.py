@@ -1,12 +1,15 @@
 import json
+import uuid
 from typing import Any
 
 from app.core.config import settings
+from app.core.time import utc_now
 from app.services.http_client import request_with_retries
 from app.services.observability import log_structured
 from app.services.runtime_settings import resolve_runtime_value
 
 GEMINI_MODEL = "gemini-2.5-flash"
+CAPTION_MAX_CHARS = 2200
 DEFAULT_COMMENT_REPLY_PROMPT = (
     "Bạn là chăm sóc khách hàng cho fanpage Facebook. "
     "Hãy trả lời bình luận thật thân thiện, ngắn gọn, tự nhiên và phù hợp ngữ cảnh. "
@@ -84,7 +87,9 @@ def _generate_with_gemini(
 ) -> str:
     gemini_api_key = resolve_runtime_value("GEMINI_API_KEY")
     if not gemini_api_key:
-        log_structured("gemini", "warning", "Chưa cấu hình GEMINI_API_KEY, dùng nội dung fallback.")
+        log_structured(
+            "gemini", "warning", "Chưa cấu hình GEMINI_API_KEY, dùng nội dung fallback."
+        )
         return fallback
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={gemini_api_key}"
@@ -126,15 +131,107 @@ def _generate_with_gemini(
     return fallback
 
 
-def generate_caption(original_caption: str) -> str:
-    prompt = f"""Bạn là Trùm Copywriter chuyên viral content Facebook. Mệnh lệnh bắt buộc:
-1. Viết lại caption sao cho kịch tính, thú vị, xài emoji hợp lý, độ dài 50-100 từ.
-2. Ngay lập tức loại bỏ toàn bộ hashtag cũ trong caption gốc.
-3. Dựa vào nội dung, tự bổ sung 5-6 hashtag phù hợp cho Facebook.
-Kết quả chỉ trả về đoạn caption thuần túy, không có giải thích.
+def parse_uuid_or_none(raw_id: str):
+    try:
+        return uuid.UUID(raw_id)
+    except ValueError:
+        return None
 
-Caption gốc: {original_caption}"""
-    return _generate_with_gemini(prompt, f"{original_caption}\n\n#giaitri #trending", timeout=30)
+
+DEFAULT_CAPTION_PROMPT = (
+    "Bạn là Trùm Copywriter chuyên viral content Facebook Reels. Mệnh lệnh bắt buộc:\n"
+    "1. Viết lại caption sao cho kịch tính, thú vị, xài emoji hợp lý, độ dài 50-150 từ.\n"
+    "2. Loại bỏ toàn bộ hashtag cũ trong caption gốc.\n"
+    "3. Tự bổ sung 5-6 hashtag trending phù hợp cho Facebook Reels.\n"
+    "4. Thêm CTA (call-to-action) cuối caption như: 'Theo dõi để xem thêm nhé!', 'Comment ý kiến của bạn!', v.v.\n"
+    "5. Caption KHÔNG được vượt quá 2200 ký tự.\n"
+    "Kết quả chỉ trả về đoạn caption thuần túy, không có giải thích."
+)
+
+
+def generate_caption(original_caption: str, custom_prompt: str | None = None) -> str:
+    base_prompt = (custom_prompt or "").strip() or DEFAULT_CAPTION_PROMPT
+    prompt = (
+        f"{base_prompt}\n\nCaption gốc: {original_caption or 'Không có caption gốc.'}"
+    )
+    result = _generate_with_gemini(
+        prompt,
+        f"{original_caption}\n\n#giaitri #trending #viral #xuhuong #fyp",
+        timeout=30,
+    )
+    return result[:CAPTION_MAX_CHARS]
+
+
+def generate_caption_for_video_job(video_id: str) -> dict:
+    """Generate AI caption for a video using per-page prompt if available."""
+    from app.core.database import SessionLocal
+    from app.models.models import Campaign, FacebookPage, Video
+    from app.services.observability import record_event
+
+    db: Session = SessionLocal()
+    video = None
+    try:
+        video_uuid = parse_uuid_or_none(video_id)
+        if not video_uuid:
+            raise ValueError("Mã video không hợp lệ.")
+
+        video = db.query(Video).filter(Video.id == video_uuid).first()
+        if not video:
+            raise ValueError("Không tìm thấy video.")
+
+        if video.status.value != "ready":
+            return {
+                "ok": False,
+                "video_id": str(video.id),
+                "error": f"Video chưa sẵn sàng (status={video.status.value}).",
+            }
+
+        campaign = video.campaign
+        custom_prompt = None
+        if campaign and campaign.target_page_id:
+            page = (
+                db.query(FacebookPage)
+                .filter(FacebookPage.page_id == campaign.target_page_id)
+                .first()
+            )
+            if page and page.caption_prompt:
+                custom_prompt = page.caption_prompt
+
+        ai_caption = generate_caption(video.original_caption, custom_prompt)
+        video.ai_caption = ai_caption
+        video.updated_at = utc_now()
+        db.commit()
+
+        record_event(
+            "video",
+            "info",
+            "Đã tạo caption AI cho video.",
+            db=db,
+            details={
+                "video_id": str(video.id),
+                "caption_length": len(ai_caption),
+                "used_custom_prompt": bool(custom_prompt),
+            },
+        )
+        return {
+            "ok": True,
+            "video_id": str(video.id),
+            "ai_caption": ai_caption,
+        }
+
+    except Exception as exc:
+        if video:
+            db.rollback()
+        record_event(
+            "video",
+            "error",
+            "Tạo caption AI cho video thất bại.",
+            db=db,
+            details={"video_id": video_id, "error": str(exc)},
+        )
+        raise
+    finally:
+        db.close()
 
 
 def generate_message_reply_with_context(
@@ -157,7 +254,9 @@ def generate_message_reply_with_context(
         content = (turn.get("content") or "").strip()
         if content:
             history_lines.append(f"- {role}: {content}")
-    history_block = "\n".join(history_lines) if history_lines else "- Chưa có lịch sử trước đó."
+    history_block = (
+        "\n".join(history_lines) if history_lines else "- Chưa có lịch sử trước đó."
+    )
 
     prompt = (
         f"{base_prompt}\n\n"
@@ -209,10 +308,14 @@ def generate_message_reply_with_context(
     )
 
 
-def generate_reply(user_message: str, *, channel: str = "comment", prompt_override: str | None = None) -> str:
+def generate_reply(
+    user_message: str, *, channel: str = "comment", prompt_override: str | None = None
+) -> str:
     is_message_channel = channel == "message"
     base_prompt = (prompt_override or "").strip() or (
-        DEFAULT_MESSAGE_REPLY_PROMPT if is_message_channel else DEFAULT_COMMENT_REPLY_PROMPT
+        DEFAULT_MESSAGE_REPLY_PROMPT
+        if is_message_channel
+        else DEFAULT_COMMENT_REPLY_PROMPT
     )
     customer_label = "Tin nhắn inbox" if is_message_channel else "Bình luận"
     fallback = "Cảm ơn bạn đã nhắn cho trang. Bên mình sẽ hỗ trợ bạn sớm nhé!"
@@ -266,7 +369,9 @@ def check_gemini_health(api_key: str | None = None) -> dict:
         data = {}
 
     if response.status_code != 200:
-        error_message = data.get("error", {}).get("message") if isinstance(data, dict) else None
+        error_message = (
+            data.get("error", {}).get("message") if isinstance(data, dict) else None
+        )
         return {
             "configured": True,
             "ok": False,
@@ -275,7 +380,11 @@ def check_gemini_health(api_key: str | None = None) -> dict:
             "message": error_message or f"Gemini trả về HTTP {response.status_code}.",
         }
 
-    model_names = [item.get("name", "") for item in data.get("models", []) if isinstance(item, dict)]
+    model_names = [
+        item.get("name", "")
+        for item in data.get("models", [])
+        if isinstance(item, dict)
+    ]
     return {
         "configured": True,
         "ok": True,

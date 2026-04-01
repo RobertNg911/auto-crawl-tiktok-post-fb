@@ -21,6 +21,7 @@ from app.services.task_queue import (
     TASK_TYPE_VIDEO_RETRY,
     TASK_TYPE_VIDEO_METRICS_SYNC,
     TASK_TYPE_CHANNEL_METRICS_SYNC,
+    TASK_TYPE_VIDEO_PUBLISH,
     claim_next_task,
     complete_task,
     fail_task,

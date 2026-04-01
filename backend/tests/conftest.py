@@ -4,17 +4,7 @@ import tempfile
 import uuid
 
 os.environ["APP_TIMEZONE"] = "UTC"
-
-import zoneinfo
-
-try:
-    zoneinfo.ZoneInfo("UTC")
-except Exception:
-    import sys
-    from importlib import reload
-
-    if "zoneinfo" in sys.modules:
-        reload(sys.modules["zoneinfo"])
+os.environ["TZ"] = "UTC"
 
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
@@ -84,6 +74,8 @@ def db_session():
 
 @pytest.fixture
 def client():
+    from app.api import webhooks
+
     app = FastAPI()
     app.include_router(auth.router)
     app.include_router(
@@ -102,6 +94,7 @@ def client():
         system.router, dependencies=[Depends(require_authenticated_user)]
     )
     app.include_router(users.router, dependencies=[Depends(require_authenticated_user)])
+    app.include_router(webhooks.router)
     with TestClient(app) as test_client:
         yield test_client
 
