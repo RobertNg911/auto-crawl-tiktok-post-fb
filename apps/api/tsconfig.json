@@ -1,1 +1,16 @@
-{"compilerOptions":{"target":"ES2020","module":"CommonJS","lib":["ES2020"],"outDir":"./dist","rootDir":"./api","strict":true,"esModuleInterop":true,"skipLibCheck":true,"moduleResolution":"node"},"include":["api/**/*.ts"],"exclude":["node_modules","dist"]}
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "lib": ["ES2020", "DOM"],
+    "outDir": "./dist",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "moduleResolution": "node",
+    "noEmit": false
+  },
+  "include": ["api/**/*.ts", "lib/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
