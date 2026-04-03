@@ -1,6 +1,12 @@
 {
-  "framework": null,
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "installCommand": "npm install"
+  "version": 2,
+  "builds": [
+    {
+      "src": "dist/api/**/*.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/dist/api/$1/index.js" }
+  ]
 }
