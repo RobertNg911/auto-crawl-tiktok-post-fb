@@ -1,22 +1,35 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin } from '../../lib/supabase-admin';
-import { createClient } from '@supabase/supabase-js';
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 
-function getUserId(req: VercelRequest): string | null {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) return null;
+function setCorsHeaders(res: VercelResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+}
+
+function verifyToken(authHeader: string | null | undefined): { user_id?: string; error?: string } {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return { error: 'No token provided' };
+  }
   try {
-    const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET) as any;
-    return decoded.user_id;
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    return { user_id: decoded.user_id };
   } catch {
-    return null;
+    return { error: 'Invalid token' };
   }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  setCorsHeaders(res);
+  
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   const { id } = req.query;
 
   if (req.method === 'GET') {
@@ -27,9 +40,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === 'POST') {
-    if (id && typeof id === 'string') {
-      return handleCreateCampaign(req, res);
-    }
     return handleCreateCampaign(req, res);
   }
 
@@ -55,11 +65,7 @@ async function handleListCampaigns(req: VercelRequest, res: VercelResponse) {
 
     let query = supabaseAdmin
       .from('campaigns')
-      .select(`
-        *,
-        videos(count),
-        target_channels(id, username, display_name)
-      `, { count: 'exact' })
+      .select('*', { count: 'exact' })
       .eq('is_deleted', false)
       .order('created_at', { ascending: false })
       .range((Number(page) - 1) * Number(limit), Number(page) * Number(limit) - 1);
@@ -86,6 +92,17 @@ async function handleListCampaigns(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+function getUserId(req: VercelRequest): string | null {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return null;
+  try {
+    const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET) as any;
+    return decoded.user_id;
+  } catch {
+    return null;
+  }
+}
+
 async function handleGetCampaign(req: VercelRequest, res: VercelResponse, id: string) {
   try {
     const userId = getUserId(req);
@@ -93,11 +110,7 @@ async function handleGetCampaign(req: VercelRequest, res: VercelResponse, id: st
 
     const { data: campaign, error } = await supabaseAdmin
       .from('campaigns')
-      .select(`
-        *,
-        videos(*),
-        target_channels(id, username, display_name)
-      `)
+      .select('*, videos(*)')
       .eq('id', id)
       .single();
 
