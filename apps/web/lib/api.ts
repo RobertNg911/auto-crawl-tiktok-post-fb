@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-export const API_BASE_URL = 'https://api-psi-nine-43.vercel.app/api';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 interface ApiOptions {
   method?: string;
