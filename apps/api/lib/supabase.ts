@@ -1,0 +1,25 @@
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+export type SupabaseClient = typeof supabase;
+
+export function createBrowserClient() {
+  return createClient(supabaseUrl, supabaseAnonKey);
+}
+
+export function createServerClient(supabaseAccessToken?: string) {
+  if (supabaseAccessToken) {
+    return createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${supabaseAccessToken}`,
+        },
+      },
+    });
+  }
+  return createClient(supabaseUrl, supabaseAnonKey);
+}
