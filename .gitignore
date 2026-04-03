@@ -39,8 +39,8 @@ venv.bak/
 dist/
 .vite/
 
-# Project Specific
-videos_storage/
+# API
+apps/api/dist/
 debug_logs.txt
 backend_cron.txt
 backend/runtime.env
