@@ -219,17 +219,24 @@ CREATE INDEX IF NOT EXISTS idx_task_status ON task_queue(status);
 -- AUTO CREATE USER PROFILE
 -- =====================================================
 
-CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $function$
 BEGIN
-    INSERT INTO user_profiles (id, display_name)
+    INSERT INTO public.user_profiles (id, display_name)
     VALUES (
         NEW.id,
         COALESCE(NEW.raw_user_meta_data->>'display_name', split_part(NEW.email, '@', 1))
-    );
+    )
+    ON CONFLICT (id) DO UPDATE
+    SET display_name = EXCLUDED.display_name,
+        updated_at = now();
+
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$function$;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
