@@ -1,4 +1,4 @@
 {
   "framework": null,
-  "buildCommand": "cd apps/web && npm install && npm run build"
+  "buildCommand": "npm run build"
 }
