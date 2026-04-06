@@ -55,11 +55,38 @@
 - [x] M7-T4: Bugs documented (bugs.md created)
 
 ### Manual Testing Required:
-- [ ] Test Auth Flow (login/logout)
-- [ ] Test Crawl Campaign (sync from TikTok)
-- [ ] Test Facebook Integration (webhook, post)
-- [ ] Test AI Features (caption generation)
-- [ ] Test Production Cutover
+- [x] Test Auth Flow (login/logout) - ĐÃ HOẠT ĐỘNG
+- [ ] Test Crawl Campaign (sync from TikTok) - CHƯA TEST
+- [ ] Test Facebook Integration (webhook, post) - CHƯA TEST
+- [ ] Test AI Features (caption generation) - CHƯA TEST
+- [ ] Test Production Cutover - CHƯA TEST
+
+---
+
+## 🚀 DEPLOYMENT STATUS (Cloudflare)
+
+### URLs
+- **Frontend:** https://master.auto-crawl-tiktok-post-fb.pages.dev
+- **API:** https://auto-crawl-tiktok-post-fb.leesun190590.workers.dev
+
+### ✅ Đã hoạt động
+- [x] Đăng nhập (testuser@autocrawl.com / testpass123)
+- [x] Menu sidebar hiển thị
+- [x] Cloudflare Workers API deploy
+- [x] Cloudflare Pages frontend deploy
+
+### ❌ Cần fix - LỖI DATABASE
+```
+API Error: "column campaigns.is_deleted does not exist"
+```
+
+**Nguyên nhân:** Supabase database chưa có bảng/columns cần thiết.
+
+**Cần tạo tables:**
+1. `campaigns` - id, name, source_url, topic, status, created_by, is_deleted, created_at...
+2. `videos` - id, campaign_id, url, title, status, source_platform, is_deleted...
+3. `facebook_pages` - id, page_id, page_name, access_token, created_by, is_deleted...
+4. `user_profiles` - id, role, display_name (đã có)
 
 ---
 

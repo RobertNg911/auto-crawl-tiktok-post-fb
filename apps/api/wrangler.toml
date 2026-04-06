@@ -5,7 +5,3 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 ENVIRONMENT = "development"
-
-[env.production]
-  [env.production.vars]
-  ENVIRONMENT = "production"
