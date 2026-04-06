@@ -1,14 +1,13 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabaseAdmin } from '../../lib/supabase-admin';
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { supabaseAdmin, env } from '../../lib/env';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'autocrawl-jwt-secret-change-in-production';
+type Variables = { user_id?: string };
 
-function setCorsHeaders(res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-}
+const auth = new Hono<{ Variables: Variables }>();
+
+auth.use('/*', cors());
 
 function verifyToken(authHeader: string | null | undefined): { user_id?: string; error?: string } {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -16,151 +15,92 @@ function verifyToken(authHeader: string | null | undefined): { user_id?: string;
   }
   try {
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const decoded = jwt.verify(token, env.JWT_SECRET) as any;
     return { user_id: decoded.user_id };
   } catch {
     return { error: 'Invalid token' };
   }
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCorsHeaders(res);
+auth.post('/login', async (c) => {
+  const contentType = c.req.header('content-type') || '';
+  const rawBody = await c.req.text();
   
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+  let username = '', password = '';
+  
+  if (contentType.includes('application/json')) {
+    try {
+      const body = JSON.parse(rawBody);
+      username = body?.username || '';
+      password = body?.password || '';
+    } catch {
+      username = '';
+      password = '';
+    }
+  } else {
+    const body = await c.req.parseBody();
+    username = body.username as string;
+    password = body.password as string;
   }
-
-  if (req.method === 'POST') {
-    if (req.url?.includes('change-password')) {
-      return handleChangePassword(req, res);
-    }
-    return handleLogin(req, res);
+  
+  if (!username || !password) {
+    return c.json({ error: 'Username and password are required' }, 400);
   }
-
-  if (req.method === 'GET') {
-    return handleMe(req, res);
+  
+  const email = username.includes('@') ? username : `${username}@autocrawl.local`;
+  
+  // Use direct fetch to avoid supabase-js issues
+  const response = await fetch('https://lqzvltnwbkthjyzjztdd.supabase.co/auth/v1/token?grant_type=password', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxxenZsdG53Ymt0aGp5emp6dGRkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTA2MDUzMCwiZXhwIjoyMDkwNjM2NTMwfQ.oZLm7o9cM3FoNgSzALIyIxH-aHQKFTp-513pzm5WSIM'
+    },
+    body: JSON.stringify({ email, password })
+  });
+  
+  const authResult = await response.json();
+  
+  if (!response.ok || authResult.error) {
+    return c.json({ error: 'Invalid login credentials', detail: authResult }, 401);
   }
+  
+  const { data: profile } = await supabaseAdmin
+    .from('user_profiles')
+    .select('*')
+    .eq('id', authResult.user.id)
+    .single();
+    
+  const token = jwt.sign(
+    { user_id: authResult.user.id, email: authResult.user.email, role: profile?.role || 'operator' },
+    env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+  
+  return c.json({
+    user: { id: authResult.user.id, email: authResult.user.email, role: profile?.role || 'operator', display_name: profile?.display_name || authResult.user.email },
+    session: { access_token: token, refresh_token: authResult.refresh_token, expires_at: Date.now() + 7 * 24 * 60 * 60 * 1000 },
+  });
+});
 
-  return res.status(405).json({ error: 'Method not allowed' });
-}
+auth.get('/me', async (c) => {
+  const authResult = verifyToken(c.req.header('authorization'));
+  if (authResult.error) return c.json({ error: authResult.error }, 401);
+  const { data: user, error } = await supabaseAdmin.auth.admin.getUserById(authResult.user_id!);
+  if (error || !user.user) return c.json({ error: 'User not found' }, 401);
+  const { data: profile } = await supabaseAdmin.from('user_profiles').select('*').eq('id', user.user.id).single();
+  return c.json({ id: user.user.id, email: user.user.email, role: profile?.role || 'operator', display_name: profile?.display_name || user.user.email });
+});
 
-async function handleLogin(req: VercelRequest, res: VercelResponse) {
-  try {
-    const { username, password } = req.body;
+auth.post('/change-password', async (c) => {
+  const authResult = verifyToken(c.req.header('authorization'));
+  if (authResult.error) return c.json({ error: authResult.error }, 401);
+  const { current_password, new_password } = await c.req.json().catch(() => ({}));
+  if (!current_password || !new_password) return c.json({ error: 'Current and new password are required' }, 400);
+  if (new_password.length < 6) return c.json({ error: 'Password must be at least 6 characters' }, 400);
+  const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(authResult.user_id!, { password: new_password });
+  if (updateError) return c.json({ error: updateError.message }, 400);
+  return c.json({ message: 'Password changed successfully' });
+});
 
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password are required' });
-    }
-
-    const email = username.includes('@') ? username : `${username}@autocrawl.local`;
-
-    // Verify password using Supabase Auth
-    const { data: authData, error: authError } = await supabaseAdmin.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (authError) {
-      return res.status(401).json({ error: 'Invalid login credentials' });
-    }
-
-    // Get user profile
-    const { data: profile } = await supabaseAdmin
-      .from('user_profiles')
-      .select('*')
-      .eq('id', authData.user.id)
-      .single();
-
-    // Generate custom JWT
-    const token = jwt.sign(
-      {
-        user_id: authData.user.id,
-        email: authData.user.email,
-        role: profile?.role || 'operator',
-      },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    return res.status(200).json({
-      user: {
-        id: authData.user.id,
-        email: authData.user.email,
-        role: profile?.role || 'operator',
-        display_name: profile?.display_name || authData.user.email,
-      },
-      session: {
-        access_token: token,
-        refresh_token: authData.session.refresh_token,
-        expires_at: Date.now() + 7 * 24 * 60 * 60 * 1000,
-      },
-    });
-  } catch (error: any) {
-    console.error('Login error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-}
-
-async function handleMe(req: VercelRequest, res: VercelResponse) {
-  try {
-    const authResult = verifyToken(req.headers.authorization);
-    if (authResult.error) {
-      return res.status(401).json({ error: authResult.error });
-    }
-
-    const { data: user, error } = await supabaseAdmin.auth.admin.getUserById(authResult.user_id!);
-
-    if (error || !user.user) {
-      return res.status(401).json({ error: 'User not found' });
-    }
-
-    const { data: profile } = await supabaseAdmin
-      .from('user_profiles')
-      .select('*')
-      .eq('id', user.user.id)
-      .single();
-
-    return res.status(200).json({
-      id: user.user.id,
-      email: user.user.email,
-      role: profile?.role || 'operator',
-      display_name: profile?.display_name || user.user.email,
-    });
-  } catch (error: any) {
-    console.error('Get user error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-}
-
-async function handleChangePassword(req: VercelRequest, res: VercelResponse) {
-  try {
-    const authResult = verifyToken(req.headers.authorization);
-    if (authResult.error) {
-      return res.status(401).json({ error: authResult.error });
-    }
-
-    const { current_password, new_password } = req.body;
-
-    if (!current_password || !new_password) {
-      return res.status(400).json({ error: 'Current and new password are required' });
-    }
-
-    if (new_password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    }
-
-    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
-      authResult.user_id!,
-      { password: new_password }
-    );
-
-    if (updateError) {
-      return res.status(400).json({ error: updateError.message });
-    }
-
-    return res.status(200).json({ message: 'Password changed successfully' });
-  } catch (error: any) {
-    console.error('Change password error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-}
+export default auth;
