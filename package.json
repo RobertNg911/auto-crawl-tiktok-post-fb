@@ -1,22 +1,9 @@
 {
-  "name": "auto-crawl-monorepo",
-  "version": "1.0.0",
-  "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
   "scripts": {
-    "dev": "npm run dev --workspace=apps/web",
-    "dev:api": "npm run dev --workspace=apps/api",
-    "build": "npm run build --workspace=apps/web && npm run build --workspace=apps/api",
-    "deploy": "vercel --prod",
-    "deploy:api": "vercel --prod --cwd=apps/api",
-    "deploy:web": "vercel --prod --cwd=apps/web",
-    "lint": "npm run lint --workspaces",
-    "test": "npm run test --workspaces"
+    "install": "npm install",
+    "build": "cd apps/web && npm install && npm run build"
   },
-  "devDependencies": {
-    "vercel": "^33.0.0"
+  "dependencies": {
+    "vite": "^5.0.0"
   }
 }
