@@ -66,7 +66,14 @@ export function useCampaigns(initialStatus?: string) {
   };
 
   const syncCampaign = async (id: string) => {
-    await campaignsApi.sync(id);
+    try {
+      const result = await campaignsApi.sync(id);
+      await fetchCampaigns(page);
+      return result;
+    } catch (err) {
+      console.error('Sync error:', err);
+      throw err;
+    }
   };
 
   const totalPages = Math.ceil(total / limit);

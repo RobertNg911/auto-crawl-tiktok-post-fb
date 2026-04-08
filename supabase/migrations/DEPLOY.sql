@@ -36,9 +36,13 @@ CREATE TABLE IF NOT EXISTS campaigns (
     auto_post BOOLEAN DEFAULT FALSE,
     target_page_id VARCHAR,
     schedule_interval INTEGER DEFAULT 0,
+    upload_delay INTEGER DEFAULT 0,
+    ai_caption_enabled BOOLEAN DEFAULT FALSE,
+    ai_hashtag_enabled BOOLEAN DEFAULT TRUE,
     last_synced_at TIMESTAMPTZ,
     last_sync_status VARCHAR DEFAULT 'idle',
     last_sync_error VARCHAR,
+    is_deleted BOOLEAN DEFAULT FALSE NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

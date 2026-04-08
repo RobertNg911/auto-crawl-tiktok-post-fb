@@ -75,13 +75,13 @@ export const campaignsApi = {
     apiFetch<any>(`/campaigns/${id}`, { method: 'DELETE' }),
 
   sync: (id: string) =>
-    apiFetch<any>(`/campaigns/${id}?action=sync`, { method: 'POST' }),
+    apiFetch<any>(`/campaigns/${id}/sync`, { method: 'POST' }),
 
   pause: (id: string) =>
-    apiFetch<any>(`/campaigns/${id}?action=pause`, { method: 'POST' }),
+    apiFetch<any>(`/campaigns/${id}/pause`, { method: 'POST' }),
 
   resume: (id: string) =>
-    apiFetch<any>(`/campaigns/${id}?action=resume`, { method: 'POST' }),
+    apiFetch<any>(`/campaigns/${id}/resume`, { method: 'POST' }),
 };
 
 // Videos API
@@ -115,7 +115,7 @@ export const videosApi = {
 
 // Facebook Pages API
 export const facebookApi = {
-  list: () => apiFetch<any[]>('/facebook'),
+  list: () => apiFetch<{ pages: any[] }>('/facebook').then(res => res.pages),
 
   create: (data: any) =>
     apiFetch<any>('/facebook', { method: 'POST', body: data }),
@@ -129,7 +129,7 @@ export const facebookApi = {
 
 // Dashboard API
 export const dashboardApi = {
-  overview: () => apiFetch<any>('/dashboard/'),
+  overview: () => apiFetch<any>('/dashboard'),
 };
 
 // System API

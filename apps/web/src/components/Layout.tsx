@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../../lib/AuthContext';
 
 const navItems = [
@@ -9,7 +9,7 @@ const navItems = [
   { path: '/pages', label: 'Facebook Pages', icon: '📘' },
 ];
 
-export default function Layout({ children }: { children?: React.ReactNode }) {
+export default function Layout() {
   const location = useLocation();
   const { user, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -87,7 +87,7 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
           </nav>
         )}
 
-        <div className="p-6">{children}</div>
+        <div className="p-6"><Outlet /></div>
       </main>
     </div>
   );

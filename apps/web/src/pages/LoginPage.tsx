@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../lib/AuthContext';
 
 export default function LoginPage() {
-  const { login, loading, error } = useAuth();
+  const navigate = useNavigate();
+  const { login, isLoggingIn, error } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState('');
@@ -18,6 +20,7 @@ export default function LoginPage() {
 
     try {
       await login(username, password);
+      navigate('/');
     } catch (err: any) {
       setLocalError(err.message || 'Login failed');
     }
@@ -69,9 +72,9 @@ export default function LoginPage() {
           <button
             type="submit"
             className="btn btn-primary w-full"
-            disabled={loading}
+            disabled={isLoggingIn}
           >
-            {loading ? (
+            {isLoggingIn ? (
               <>
                 <span className="spinner" />
                 Đang đăng nhập...

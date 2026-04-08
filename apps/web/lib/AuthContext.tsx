@@ -11,6 +11,7 @@ interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  isLoggingIn: boolean;
   error: string | null;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
@@ -22,6 +23,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refreshUser = async () => {
@@ -35,7 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const login = async (username: string, password: string) => {
-    setLoading(true);
+    setIsLoggingIn(true);
     setError(null);
 
     try {
@@ -49,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setError(err.message || 'Login failed');
       throw err;
     } finally {
-      setLoading(false);
+      setIsLoggingIn(false);
     }
   };
 
@@ -78,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, error, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, isLoggingIn, error, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

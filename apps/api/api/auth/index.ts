@@ -59,9 +59,13 @@ auth.post('/login', async (c) => {
     body: JSON.stringify({ email, password })
   });
   
-  const authResult = await response.json();
+  const authResult = await response.json() as {
+    error?: string;
+    user?: { id: string; email: string };
+    refresh_token?: string;
+  };
   
-  if (!response.ok || authResult.error) {
+  if (!response.ok || authResult.error || !authResult.user) {
     return c.json({ error: 'Invalid login credentials', detail: authResult }, 401);
   }
   

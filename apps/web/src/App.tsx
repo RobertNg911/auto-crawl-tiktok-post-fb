@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from '../lib/AuthContext';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import CampaignsPage from './pages/CampaignsPage';
+import CampaignFormPage from './pages/CampaignFormPage';
 import VideosPage from './pages/VideosPage';
 import FacebookPagesPage from './pages/FacebookPagesPage';
 import Layout from './components/Layout';
@@ -41,6 +42,7 @@ export default function App() {
           >
             <Route index element={<DashboardPage />} />
             <Route path="campaigns" element={<CampaignsPage />} />
+            <Route path="campaigns/new" element={<CampaignFormPage />} />
             <Route path="campaigns/:id" element={<CampaignsPage />} />
             <Route path="videos" element={<VideosPage />} />
             <Route path="pages" element={<FacebookPagesPage />} />

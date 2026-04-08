@@ -13,7 +13,11 @@ export default function FacebookPagesPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await createPage(formData);
+      await createPage({
+        page_id: formData.page_id,
+        page_name: formData.page_name,
+        access_token: formData.access_token,
+      });
       setFormData({ page_id: '', page_name: '', access_token: '' });
       setShowForm(false);
     } catch (err) {

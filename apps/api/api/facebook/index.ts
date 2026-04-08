@@ -12,7 +12,7 @@ function getUserId(authHeader: string | null | undefined): string | null {
 facebook.get('/', async (c) => {
   const userId = getUserId(c.req.header('authorization'));
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
-  const { data: pages, error } = await supabaseAdmin.from('facebook_pages').select('*').eq('is_deleted', false).order('created_at', { ascending: false });
+  const { data: pages, error } = await supabaseAdmin.from('facebook_pages').select('id, page_id, page_name, auto_post, auto_comment, auto_inbox, created_at').eq('is_deleted', false).order('created_at', { ascending: false });
   if (error) return c.json({ error: error.message }, 500);
   return c.json({ pages });
 });
@@ -20,9 +20,9 @@ facebook.get('/', async (c) => {
 facebook.post('/', async (c) => {
   const userId = getUserId(c.req.header('authorization'));
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
-  const { page_id, page_name, access_token, page_access_token } = await c.req.json().catch(() => ({}));
+  const { page_id, page_name, access_token } = await c.req.json().catch(() => ({}));
   if (!page_id || !page_name) return c.json({ error: 'page_id and page_name are required' }, 400);
-  const { data: page, error } = await supabaseAdmin.from('facebook_pages').insert({ page_id, page_name, access_token, page_access_token, created_by: userId }).select().single();
+  const { data: page, error } = await supabaseAdmin.from('facebook_pages').insert({ page_id, page_name, long_lived_access_token: access_token }).select().single();
   if (error) return c.json({ error: error.message }, 500);
   return c.json(page, 201);
 });

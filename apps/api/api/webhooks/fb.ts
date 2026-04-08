@@ -21,7 +21,7 @@ webhooks.get('/', async (c) => {
 });
 
 webhooks.post('/', async (c) => {
-  const signature = c.req.header('x-hub-signature-256');
+  const signature = c.req.header('x-hub-signature-256') ?? null;
   const body = await c.req.text();
   if (!verifyFacebookSignature(body, signature)) {
     return c.json({ error: 'Invalid signature' }, 401);

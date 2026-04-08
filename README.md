@@ -5,16 +5,12 @@
 [![Cloudflare](https://img.shields.io/badge/Cloudflare-Workers+%2B+Pages-F38020?logo=cloudflare&logoColor=white)](https://cloudflare.com)
 [![Supabase](https://img.shields.io/badge/Supabase-Database-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com)
 
-Hệ thống quản lý đăng bài TikTok/Facebook: crawl video từ TikTok và YouTube Shorts, tạo campaign, xếp lịch đăng Facebook Reels, quản lý nhiều fanpage.
+Hệ thống quản lý đăng bài TikTok/Facebook: crawl video, tạo campaign, xếp lịch đăng Facebook, quản lý fanpage.
 
 ## 🚀 Live Demo
 
 - **Frontend:** https://master.auto-crawl-tiktok-post-fb.pages.dev
 - **API:** https://auto-crawl-tiktok-post-fb.leesun190590.workers.dev
-
-**Tài khoản test:**
-- Email: `testuser@autocrawl.com`
-- Password: `testpass123`
 
 ## 🛠️ Công nghệ
 
@@ -41,17 +37,15 @@ auto-crawl-tiktok-post-fb/
 │       │   ├── components/
 │       │   ├── hooks/
 │       │   └── lib/     # API client
-│       ├── dist/         # Built static files
+│       ├── dist/        # Built static files
 │       └── package.json
 ├── supabase/             # Database migrations
-├── database/
-├── docs/
-└── docker-compose.yml   # Legacy Docker setup
+└── videos_storage/        # Downloaded videos
 ```
 
 ## 🚀 Deployment
 
-### Deploy API (Cloudflare Workers)
+### 1. Deploy API (Cloudflare Workers)
 
 ```bash
 cd apps/api
@@ -59,7 +53,7 @@ npm install
 npx wrangler deploy
 ```
 
-### Deploy Frontend (Cloudflare Pages)
+### 2. Deploy Frontend (Cloudflare Pages)
 
 ```bash
 cd apps/web
@@ -68,50 +62,62 @@ npm run build
 npx wrangler pages deploy dist --project-name=auto-crawl-tiktok-post-fb
 ```
 
-### Deploy với token
+### 3. Database Setup
 
-```bash
-export CLOUDFLARE_API_TOKEN=your_token
-npx wrangler deploy
-```
+Chạy SQL trong `supabase/migrations/DEPLOY.sql` trên Supabase SQL Editor.
 
 ## 🔑 Environment Variables
 
 ### Frontend (.env)
-```
-VITE_SUPABASE_URL=https://your-project.supabase.co
+```env
+VITE_SUPABASE_URL=your_supabase_url
 VITE_SUPABASE_ANON_KEY=your_anon_key
-VITE_API_URL=https://your-api.workers.dev
+VITE_API_URL=your_api_url
 ```
 
-### Supabase
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `JWT_SECRET`
+### API (.dev.vars hoặc Cloudflare Secrets)
+```
+SUPABASE_URL=your_supabase_url
+SUPABASE_SERVICE_ROLE_KEY=your_service_key
+JWT_SECRET=your_jwt_secret
+CRON_SECRET=your_cron_secret
+```
 
 ## 📡 API Endpoints
 
 | Endpoint | Method | Mô tả |
 |----------|--------|-------|
 | `/api/auth/login` | POST | Đăng nhập |
-| `/api/auth/me` | GET | Lấy thông tin user |
+| `/api/auth/me` | GET | Thông tin user |
 | `/api/campaigns` | GET/POST | List/Tạo campaign |
-| `/api/campaigns/:id` | GET/PATCH/DELETE | Chi tiết/Cập nhật/Xóa campaign |
+| `/api/campaigns/:id` | GET/PATCH/DELETE | Chi tiết/Cập nhật/Xóa |
+| `/api/campaigns/:id/sync` | POST | Đồng bộ video |
 | `/api/videos` | GET | List videos |
 | `/api/facebook` | GET/POST | List/Tạo Facebook page |
-| `/api/dashboard/` | GET | Thống kê tổng quan |
-| `/api/system/health` | GET | Health check |
+| `/api/dashboard` | GET | Thống kê tổng quan |
+| `/api/cron/*` | POST | Cron jobs (auto-post, sync) |
 
 ## 🗄️ Database Schema
 
-Các bảng cần thiết trong Supabase:
+Các bảng chính:
 
-- `user_profiles` - Thông tin user (id, role, display_name)
-- `campaigns` - Chiến dịch (id, name, source_url, topic, status, is_deleted)
-- `videos` - Video (id, campaign_id, url, title, status, source_platform)
-- `facebook_pages` - Fanpage (id, page_id, page_name, access_token)
+- `user_profiles` - Thông tin user
+- `campaigns` - Chiến dịch
+- `videos` - Video
+- `facebook_pages` - Fanpage Facebook
 - `target_channels` - Kênh mục tiêu
-- `runtime_settings` - Cấu hình hệ thống
+
+## ⏰ Cron Jobs
+
+Cron chạy mỗi giờ tự động:
+- Sync campaigns
+- Auto-post videos lên Facebook
+- Auto-reply comments
+
+## ⚠️ Lưu ý
+
+- Video crawl: Hiện tại dùng demo videos để test. Để crawl thật cần paid API hoặc browser automation.
+- Database: Cần chạy migration trước khi sử dụng.
 
 ## 📝 License
 
